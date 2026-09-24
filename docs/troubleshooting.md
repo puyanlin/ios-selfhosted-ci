@@ -11,6 +11,7 @@ Real problems hit while building this, and what fixed them.
 | `IPHONEOS_DEPLOYMENT_TARGET is set to 13.0, but the range … is 15.0 to …` | New Xcode dropped old deployment targets | Raise the target in the project (and local `Package.swift` platforms) |
 | `… is missing architecture(s) required by this target (arm64)` then link errors | An old binary SDK has no arm64 simulator slice | Update the SDK, or use `destination: device` for the PR check |
 | A reused scheme doesn't exist on a branch | Shared schemes differ per branch | Pass several candidates: `scheme: "AppA AppB"` |
+| Claude review hangs silently until the timeout, no transcript at all | With `claude-path`, Claude Code runs as the runner's macOS user and loads that user's `~/.claude` (hooks, plugins, MCP servers, remote control) — something there blocks a headless job | Already handled: the review step sets `CLAUDE_CONFIG_DIR` to a fresh per-job directory. Debug with `show-full-output: true` on a test branch only |
 | Claude review stuck for 20+ minutes | The action downloads and installs Claude Code every run; slow network | Set `claude-path`/`bun-path` to local installs (bootstrap does this) |
 | Claude review cancelled at the time limit on a huge PR | Reading vendored binaries/SDKs | Timeout is 45 min and the prompt skips binaries; split huge PRs |
 | Builds wait behind the review | One runner = one job at a time | Each repo gets a second runner (`claude-review` label) |
