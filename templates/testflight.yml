@@ -13,9 +13,9 @@ on:
         type: boolean
         default: true
       xcode:
-        description: 'Xcode to use (add a beta here if you install one)'
+        description: 'Xcode to use (release by default; a beta build cannot be submitted for review)'
         type: choice
-        options: ['__XCODE_APP__']
+        options: [__XCODE_OPTIONS__]
         default: '__XCODE_APP__'
       build-number:
         description: 'Empty = today YYMMDD01 (Xcode bumps it if already taken)'

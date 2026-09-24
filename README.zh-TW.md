@@ -72,9 +72,13 @@ scripts/bootstrap-repo.sh MyApp
 scripts/bootstrap-repo.sh MyApp --scheme "MyApp MyAppPro" --branch pro
 # SDK 沒有 arm64 模擬器版本：
 scripts/bootstrap-repo.sh MyApp --destination device
-# review 用繁體中文留言：
+# review 用繁體中文留言（或在設定檔設 REVIEW_LANGUAGE）：
 scripts/bootstrap-repo.sh MyApp --review-language "Traditional Chinese (Taiwan)"
+# 只要 PR check＋review，不要 TestFlight：
+scripts/bootstrap-repo.sh MyApp --no-testflight
 ```
+
+已經設好的 repo 重跑也安全：只會更新有變動的呼叫檔，不會重複建立 ruleset。在設定檔設 `XCODE_BETA_APP`，TestFlight 的 Xcode 選單就會多出 beta 選項。
 
 ### 4. Claude review 的 token（一次，之後每個新 repo 再設一次）
 

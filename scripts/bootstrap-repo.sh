@@ -9,12 +9,13 @@
 #   --project      only needed when the project is not at the repo root
 #   --destination  device = PR check builds for device (unsigned); use when an SDK lacks an arm64 simulator slice
 #   --branch       extra long-lived branches that also get the workflows and the ruleset
+#   --no-testflight  skip the TestFlight workflow (e.g. the app belongs to an App Store Connect team you can't sign for)
 set -euo pipefail
 source ${0:A:h}/_config.sh
 TEMPLATES=${0:A:h}/../templates
 
 repo=${1:?usage: bootstrap-repo.sh <repo> [options]}; shift
-scheme=""; project=""; destination=""; language=""; branches=()
+scheme=""; project=""; destination=""; language=$REVIEW_LANGUAGE; branches=(); workflows=(pr-check testflight claude-review)
 while (( $# )); do
   case $1 in
     --scheme) scheme=$2; shift 2 ;;
@@ -22,6 +23,7 @@ while (( $# )); do
     --destination) destination=$2; shift 2 ;;
     --review-language) language=$2; shift 2 ;;
     --branch) branches+=$2; shift 2 ;;
+    --no-testflight) workflows=(${workflows:#testflight}); shift ;;
     *) echo "unknown option: $1"; exit 1 ;;
   esac
 done
@@ -75,9 +77,10 @@ render() {  # render <template>
     [[ -n $b ]] && review_with+="      bun-path: $b"$'\n'
     [[ -n $language ]] && review_with+="      language: $language"$'\n'
   fi
+  local xcode_options="'$XCODE_APP'"; [[ -n $XCODE_BETA_APP ]] && xcode_options+=", '$XCODE_BETA_APP'"
   WITH=${with%$'\n'} REVIEW_WITH=${review_with%$'\n'} awk \
-    -v scheme="$scheme" -v ci_repo="$CI_REPO" -v ci_ref="$CI_REF" -v team="$TEAM_ID" -v xcode="$XCODE_APP" '
-    { gsub(/__SCHEME__/, scheme); gsub(/__CI_REPO__/, ci_repo); gsub(/__CI_REF__/, ci_ref); gsub(/__TEAM_ID__/, team); gsub(/__XCODE_APP__/, xcode) }
+    -v scheme="$scheme" -v ci_repo="$CI_REPO" -v ci_ref="$CI_REF" -v team="$TEAM_ID" -v xcode="$XCODE_APP" -v xcode_options="$xcode_options" '
+    { gsub(/__SCHEME__/, scheme); gsub(/__CI_REPO__/, ci_repo); gsub(/__CI_REF__/, ci_ref); gsub(/__TEAM_ID__/, team); gsub(/__XCODE_OPTIONS__/, xcode_options); gsub(/__XCODE_APP__/, xcode) }
     /^__WITH__$/ { if (ENVIRON["WITH"] != "") print ENVIRON["WITH"]; next }
     /^__REVIEW_WITH__$/ { if (ENVIRON["REVIEW_WITH"] != "") print ENVIRON["REVIEW_WITH"]; next }
     { print }' $TEMPLATES/$1.yml
@@ -85,14 +88,14 @@ render() {  # render <template>
 
 say "Workflows → ${(j:, :)all_branches}"
 for br in $all_branches; do
-  for wf in pr-check testflight claude-review; do
+  for wf in $workflows; do
     fp=.github/workflows/$wf.yml
     render $wf > $tmp/$wf.yml
     sha=$(gh api "repos/$R/contents/$fp?ref=$br" -q .sha 2>/dev/null) || sha=""
     if [[ -n $sha && "$(gh api "repos/$R/contents/$fp?ref=$br" -H 'Accept: application/vnd.github.raw')" == "$(cat $tmp/$wf.yml)" ]]; then
       echo "  $br $wf: unchanged"; continue
     fi
-    args=(-f "message=ci: $wf workflow (ios-selfhosted-ci)" -f branch=$br -f "content=$(base64 -i $tmp/$wf.yml)")
+    args=(-f "message=ci: $wf workflow (ios-selfhosted-ci)${COMMIT_TRAILER:+$'\n\n'$COMMIT_TRAILER}" -f branch=$br -f "content=$(base64 -i $tmp/$wf.yml)")
     [[ -n $sha ]] && args+=(-f sha=$sha)
     gh api -X PUT repos/$R/contents/$fp $args -q '.commit.sha[0:7]' | sed "s|^|  $br $wf: |"
   done
@@ -103,8 +106,10 @@ if gh secret list -R $R | grep -q CLAUDE_CODE_OAUTH_TOKEN; then echo "  set"
 else echo "  ⚠️ missing: in your own terminal run \`claude setup-token\`, then \`scripts/set-claude-token.sh $repo\`"; fi
 
 say "Ruleset"
-if gh api repos/$R/rulesets -q '.[].name' 2>/dev/null | grep -qx 'PR check must pass'; then echo "  exists"
-elif ! gh api repos/$R/rulesets >/dev/null 2>&1; then echo "  ⚠️ rulesets on private repos need GitHub Pro/Team — skipped"
+if ! gh api repos/$R/rulesets >/dev/null 2>&1; then echo "  ⚠️ rulesets on private repos need GitHub Pro/Team — skipped"
+elif for id in $(gh api repos/$R/rulesets -q '.[].id'); do
+       gh api repos/$R/rulesets/$id -q '.rules[]|select(.type=="required_status_checks")|.parameters.required_status_checks[].context'
+     done | grep -qx 'pr-check / build'; then echo "  a ruleset already requires pr-check / build"
 else
   python3 - $all_branches[2,-1] <<'PY' > $tmp/ruleset.json
 import json,sys

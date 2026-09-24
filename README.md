@@ -82,9 +82,13 @@ scripts/bootstrap-repo.sh MyApp
 scripts/bootstrap-repo.sh MyApp --scheme "MyApp MyAppPro" --branch pro
 # an SDK without an arm64 simulator slice:
 scripts/bootstrap-repo.sh MyApp --destination device
-# review comments in another language:
+# review comments in another language (or set REVIEW_LANGUAGE in the config):
 scripts/bootstrap-repo.sh MyApp --review-language "Traditional Chinese"
+# PR check + review only, no TestFlight:
+scripts/bootstrap-repo.sh MyApp --no-testflight
 ```
+
+Re-running it on a repo that is already set up is safe: it only updates changed caller files and never duplicates the ruleset. Set `XCODE_BETA_APP` in the config to offer a beta Xcode in the TestFlight menu.
 
 ### 4. Claude review token (once, plus once per new repo)
 
