@@ -9,13 +9,14 @@
 #   --project      only needed when the project is not at the repo root
 #   --destination  device = PR check builds for device (unsigned); use when an SDK lacks an arm64 simulator slice
 #   --branch       extra long-lived branches that also get the workflows and the ruleset
+#   --no-ruleset     don't create the "PR check must pass" ruleset (e.g. the default branch doesn't build yet)
 #   --no-testflight  skip the TestFlight workflow (e.g. the app belongs to an App Store Connect team you can't sign for)
 set -euo pipefail
 source ${0:A:h}/_config.sh
 TEMPLATES=${0:A:h}/../templates
 
 repo=${1:?usage: bootstrap-repo.sh <repo> [options]}; shift
-scheme=""; project=""; destination=""; language=$REVIEW_LANGUAGE; branches=(); workflows=(pr-check testflight claude-review)
+scheme=""; project=""; destination=""; language=$REVIEW_LANGUAGE; branches=(); workflows=(pr-check testflight claude-review); want_ruleset=1
 while (( $# )); do
   case $1 in
     --scheme) scheme=$2; shift 2 ;;
@@ -24,6 +25,7 @@ while (( $# )); do
     --review-language) language=$2; shift 2 ;;
     --branch) branches+=$2; shift 2 ;;
     --no-testflight) workflows=(${workflows:#testflight}); shift ;;
+    --no-ruleset) want_ruleset=0; shift ;;
     *) echo "unknown option: $1"; exit 1 ;;
   esac
 done
@@ -106,7 +108,8 @@ if gh secret list -R $R | grep -q CLAUDE_CODE_OAUTH_TOKEN; then echo "  set"
 else echo "  ⚠️ missing: in your own terminal run \`claude setup-token\`, then \`scripts/set-claude-token.sh $repo\`"; fi
 
 say "Ruleset"
-if ! gh api repos/$R/rulesets >/dev/null 2>&1; then echo "  ⚠️ rulesets on private repos need GitHub Pro/Team — skipped"
+if (( ! want_ruleset )); then echo "  skipped (--no-ruleset)"
+elif ! gh api repos/$R/rulesets >/dev/null 2>&1; then echo "  ⚠️ rulesets on private repos need GitHub Pro/Team — skipped"
 elif for id in $(gh api repos/$R/rulesets -q '.[].id'); do
        gh api repos/$R/rulesets/$id -q '.rules[]|select(.type=="required_status_checks")|.parameters.required_status_checks[].context'
      done | grep -qx 'pr-check / build'; then echo "  a ruleset already requires pr-check / build"

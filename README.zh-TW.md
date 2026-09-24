@@ -76,6 +76,8 @@ scripts/bootstrap-repo.sh MyApp --destination device
 scripts/bootstrap-repo.sh MyApp --review-language "Traditional Chinese (Taiwan)"
 # 只要 PR check＋review，不要 TestFlight：
 scripts/bootstrap-repo.sh MyApp --no-testflight
+# 先不要 ruleset（預設分支還編不過時）：
+scripts/bootstrap-repo.sh MyApp --no-ruleset
 ```
 
 已經設好的 repo 重跑也安全：只會更新有變動的呼叫檔，不會重複建立 ruleset。在設定檔設 `XCODE_BETA_APP`，TestFlight 的 Xcode 選單就會多出 beta 選項。

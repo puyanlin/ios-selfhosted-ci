@@ -86,6 +86,8 @@ scripts/bootstrap-repo.sh MyApp --destination device
 scripts/bootstrap-repo.sh MyApp --review-language "Traditional Chinese"
 # PR check + review only, no TestFlight:
 scripts/bootstrap-repo.sh MyApp --no-testflight
+# no ruleset yet (the default branch does not build yet):
+scripts/bootstrap-repo.sh MyApp --no-ruleset
 ```
 
 Re-running it on a repo that is already set up is safe: it only updates changed caller files and never duplicates the ruleset. Set `XCODE_BETA_APP` in the config to offer a beta Xcode in the TestFlight menu.
