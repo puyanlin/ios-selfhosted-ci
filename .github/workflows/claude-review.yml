@@ -11,6 +11,7 @@ on:
       bun-path: { type: string, default: '' }
       runner-label: { type: string, default: claude-review }
       language: { type: string, default: English }
+      show-full-output: { type: boolean, default: false, description: 'Print Claude output in the job log (debugging; PR content ends up in logs)' }
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: { required: true }
 jobs:
@@ -31,11 +32,17 @@ jobs:
         with:
           fetch-depth: 1
       - uses: anthropics/claude-code-action@v1
+        env:
+          # Run Claude Code with its own empty config dir: never load the runner user's ~/.claude
+          # (personal hooks, plugins, MCP servers, remote control) — they can hang a headless job —
+          # and keep CI transcripts out of the user's history.
+          CLAUDE_CONFIG_DIR: ${{ runner.temp }}/claude-config
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           path_to_claude_code_executable: ${{ inputs.claude-path }}
           path_to_bun_executable: ${{ inputs.bun-path }}
+          show_full_output: ${{ inputs.show-full-output }}
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
