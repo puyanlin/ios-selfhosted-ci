@@ -1,0 +1,9 @@
+# The pipeline lives in __CI_REPO__; this file only holds this repo's settings.
+name: PR check
+on: [pull_request, workflow_dispatch]
+jobs:
+  pr-check:
+    uses: __CI_REPO__/.github/workflows/pr-check.yml@__CI_REF__
+    with:
+      scheme: __SCHEME__
+__WITH__

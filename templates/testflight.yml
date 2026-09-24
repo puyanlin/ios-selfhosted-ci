@@ -1,0 +1,33 @@
+# The pipeline lives in __CI_REPO__; this file only holds this repo's settings.
+# Run it from GitHub › Actions › TestFlight › Run workflow (works from the GitHub mobile app too).
+name: TestFlight
+run-name: TestFlight ${{ inputs.branch || github.ref_name }}${{ !inputs.upload && ' (dry run)' || '' }}
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch / tag / commit to build (empty = the branch selected above; it does not need to contain this workflow)'
+        default: ''
+      upload:
+        description: 'Upload to App Store Connect (untick = archive only, dry run)'
+        type: boolean
+        default: true
+      xcode:
+        description: 'Xcode to use (add a beta here if you install one)'
+        type: choice
+        options: ['__XCODE_APP__']
+        default: '__XCODE_APP__'
+      build-number:
+        description: 'Empty = today YYMMDD01 (Xcode bumps it if already taken)'
+        default: ''
+jobs:
+  testflight:
+    uses: __CI_REPO__/.github/workflows/testflight.yml@__CI_REF__
+    with:
+      scheme: __SCHEME__
+      team-id: __TEAM_ID__
+__WITH__
+      branch: ${{ inputs.branch }}
+      upload: ${{ inputs.upload }}
+      xcode: ${{ inputs.xcode }}
+      build-number: ${{ inputs.build-number }}

@@ -1,0 +1,52 @@
+name: iOS self-hosted TestFlight
+description: Archive, sign (Xcode cloud signing + App Store Connect API key) and upload to TestFlight on a self-hosted Mac.
+inputs:
+  scheme:
+    description: Scheme to archive. Several candidates may be given (space separated); the first one the branch has is used.
+    required: true
+  team-id:
+    description: Apple Developer Team ID
+    required: true
+  project:
+    description: Path to .xcodeproj or .xcworkspace; auto-detected at the repo root when empty
+    default: ''
+  configuration:
+    default: Release
+  build-number:
+    description: CFBundleVersion; empty = today's YYMMDD01 (Xcode bumps it if already taken)
+    default: ''
+  upload:
+    description: "'true' uploads to App Store Connect; 'false' only archives and exports (dry run)"
+    default: 'true'
+  internal-only:
+    description: "'true' marks the build as TestFlight internal testing only"
+    default: 'false'
+  xcode:
+    description: Xcode.app to use, e.g. /Applications/Xcode.app
+    default: ''
+outputs:
+  archive-path:
+    value: ${{ steps.run.outputs.archive-path }}
+  build-number:
+    value: ${{ steps.run.outputs.build-number }}
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: zsh {0}
+      env:
+        SCHEME: ${{ inputs.scheme }}
+        PROJECT: ${{ inputs.project }}
+        CONFIGURATION: ${{ inputs.configuration }}
+        BUILD_NUMBER: ${{ inputs.build-number }}
+        UPLOAD: ${{ inputs.upload }}
+        INTERNAL_ONLY: ${{ inputs.internal-only }}
+        TEAM_ID: ${{ inputs.team-id }}
+        XCODE_APP: ${{ inputs.xcode }}
+      run: ${{ github.action_path }}/testflight.sh
+    - if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: xcodebuild-logs
+        path: ${{ runner.temp }}/ios-ci/*.log
+        retention-days: 7

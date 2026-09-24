@@ -1,0 +1,6 @@
+# Copy to ~/.config/ios-selfhosted-ci/config and edit. Sourced by the scripts in scripts/.
+GH_OWNER=your-github-username          # user or org that owns the app repos
+TEAM_ID=ABCDE12345                     # Apple Developer Team ID (Xcode › Signing & Capabilities)
+CI_REPO=puyanlin/ios-selfhosted-ci     # where app repos get the reusable workflows from (your fork, if you forked)
+CI_REF=v1                              # tag/branch/SHA of CI_REPO that app repos pin to
+XCODE_APP=/Applications/Xcode.app

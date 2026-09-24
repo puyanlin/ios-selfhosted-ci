@@ -1,0 +1,32 @@
+name: iOS PR check
+description: Unsigned build (simulator or device) on a self-hosted Mac; optionally run tests on a simulator.
+inputs:
+  scheme:
+    required: true
+  project:
+    default: ''
+  test:
+    description: "'true' runs the scheme's tests on an iPhone simulator; 'false' only builds"
+    default: 'false'
+  destination:
+    description: "'simulator' (default) or 'device' (unsigned; use when an SDK has no arm64 simulator slice)"
+    default: 'simulator'
+  xcode:
+    default: ''
+runs:
+  using: composite
+  steps:
+    - shell: zsh {0}
+      env:
+        SCHEME: ${{ inputs.scheme }}
+        PROJECT: ${{ inputs.project }}
+        RUN_TESTS: ${{ inputs.test }}
+        BUILD_FOR: ${{ inputs.destination }}
+        XCODE_APP: ${{ inputs.xcode }}
+      run: ${{ github.action_path }}/../check.sh
+    - if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: xcodebuild-logs
+        path: ${{ runner.temp }}/ios-ci/*.log
+        retention-days: 7

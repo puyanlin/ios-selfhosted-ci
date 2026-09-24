@@ -1,0 +1,31 @@
+# Reusable: unsigned PR build on the self-hosted Mac.
+# Call it from an app repo: uses: puyanlin/ios-selfhosted-ci/.github/workflows/pr-check.yml@v1
+# The resulting check is named "<caller job id> / build", e.g. "pr-check / build" — use that in rulesets.
+name: PR check
+on:
+  workflow_call:
+    inputs:
+      scheme: { type: string, required: true, description: 'Scheme; several space-separated candidates allowed' }
+      project: { type: string, default: '' }
+      destination: { type: string, default: simulator, description: "simulator or device (unsigned)" }
+      test: { type: boolean, default: false }
+      xcode: { type: string, default: '' }
+      runner-label: { type: string, default: macos-xcode }
+jobs:
+  build:
+    runs-on: [self-hosted, "${{ inputs.runner-label }}"]
+    concurrency:
+      group: pr-check-${{ github.repository }}-${{ github.head_ref || github.ref }}
+      cancel-in-progress: true
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: puyanlin/ios-selfhosted-ci/check@v1
+        with:
+          scheme: ${{ inputs.scheme }}
+          project: ${{ inputs.project }}
+          destination: ${{ inputs.destination }}
+          test: ${{ inputs.test }}
+          xcode: ${{ inputs.xcode }}

@@ -1,0 +1,48 @@
+# Reusable: archive any branch/tag/commit, sign and upload to TestFlight from the self-hosted Mac.
+# Default path uses xcodebuild + Xcode cloud signing. Set fastlane-lane to run your own fastlane lane instead.
+name: TestFlight
+on:
+  workflow_call:
+    inputs:
+      scheme: { type: string, required: true }
+      team-id: { type: string, required: true }
+      project: { type: string, default: '' }
+      branch: { type: string, default: '', description: 'Ref to build; empty = the ref the workflow was dispatched on' }
+      upload: { type: boolean, default: true }
+      xcode: { type: string, default: '/Applications/Xcode.app' }
+      build-number: { type: string, default: '' }
+      fastlane-lane: { type: string, default: '', description: 'e.g. beta — runs `bundle exec fastlane <lane>` instead of the built-in archive/upload' }
+      runner-label: { type: string, default: macos-xcode }
+jobs:
+  testflight:
+    runs-on: [self-hosted, "${{ inputs.runner-label }}"]
+    concurrency: testflight-${{ github.repository }}-${{ inputs.branch || github.ref_name }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+      - if: ${{ inputs.fastlane-lane == '' }}
+        uses: puyanlin/ios-selfhosted-ci@v1
+        with:
+          scheme: ${{ inputs.scheme }}
+          team-id: ${{ inputs.team-id }}
+          project: ${{ inputs.project }}
+          build-number: ${{ inputs.build-number }}
+          upload: ${{ inputs.upload }}
+          xcode: ${{ inputs.xcode }}
+      - if: ${{ inputs.fastlane-lane != '' }}
+        name: fastlane ${{ inputs.fastlane-lane }}
+        shell: zsh {0}
+        env:
+          LANE: ${{ inputs.fastlane-lane }}
+          DEVELOPER_DIR: ${{ inputs.xcode }}/Contents/Developer
+          CI_BUILD_NUMBER: ${{ inputs.build-number }}
+          CI_UPLOAD: ${{ inputs.upload }}
+        run: |
+          set -euo pipefail
+          [[ $LANE =~ '^[A-Za-z0-9_:-]+$' ]] || { echo "::error::invalid lane name"; exit 1; }
+          bundle install --quiet
+          bundle exec fastlane $LANE
