@@ -23,13 +23,7 @@ xcb() {
   tail -3 $log
 }
 
-if [[ -n ${XCODE_APP:-} ]]; then
-  [[ -d $XCODE_APP ]] || { echo "::error::$XCODE_APP is not installed on this runner"; exit 1; }
-  export DEVELOPER_DIR=$XCODE_APP/Contents/Developer
-fi
-: ${DEVELOPER_DIR:=/Applications/Xcode.app/Contents/Developer}
-export DEVELOPER_DIR
-echo "Xcode: $(xcodebuild -version | tr '\n' ' ')"
+source ${0:A:h}/xcode.sh
 
 free_gb=$(( $(df -k $RUNNER_TEMP | awk 'NR==2{print $4}') / 1024 / 1024 ))
 if (( free_gb < ${MIN_FREE_GB:-8} )); then

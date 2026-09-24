@@ -12,6 +12,7 @@ inputs:
     description: "'simulator' (default) or 'device' (unsigned; use when an SDK has no arm64 simulator slice)"
     default: 'simulator'
   xcode:
+    description: Xcode path or version (27.1, 27); empty = the repo's .xcode-version, else the runner default
     default: ''
 runs:
   using: composite

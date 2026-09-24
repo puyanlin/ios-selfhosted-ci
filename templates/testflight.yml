@@ -13,10 +13,10 @@ on:
         type: boolean
         default: true
       xcode:
-        description: 'Xcode to use (release by default; a beta build cannot be submitted for review)'
+        description: 'Xcode: default = the repo .xcode-version, else the release Xcode (beta builds cannot be submitted for review)'
         type: choice
-        options: [__XCODE_OPTIONS__]
-        default: '__XCODE_APP__'
+        options: ['default', __XCODE_OPTIONS__]
+        default: 'default'
       build-number:
         description: 'Empty = today YYMMDD01 (Xcode bumps it if already taken)'
         default: ''

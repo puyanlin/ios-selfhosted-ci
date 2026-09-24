@@ -9,7 +9,7 @@ on:
       project: { type: string, default: '' }
       branch: { type: string, default: '', description: 'Ref to build; empty = the ref the workflow was dispatched on' }
       upload: { type: boolean, default: true }
-      xcode: { type: string, default: '/Applications/Xcode.app' }
+      xcode: { type: string, default: '', description: 'Xcode path or version (27.1, 27); empty/default = .xcode-version, else the runner default' }
       build-number: { type: string, default: '' }
       fastlane-lane: { type: string, default: '', description: 'e.g. beta — runs `bundle exec fastlane <lane>` instead of the built-in archive/upload' }
       runner-label: { type: string, default: macos-xcode }
@@ -34,15 +34,9 @@ jobs:
           upload: ${{ inputs.upload }}
           xcode: ${{ inputs.xcode }}
       - if: ${{ inputs.fastlane-lane != '' }}
-        name: fastlane ${{ inputs.fastlane-lane }}
-        shell: zsh {0}
-        env:
-          LANE: ${{ inputs.fastlane-lane }}
-          DEVELOPER_DIR: ${{ inputs.xcode }}/Contents/Developer
-          CI_BUILD_NUMBER: ${{ inputs.build-number }}
-          CI_UPLOAD: ${{ inputs.upload }}
-        run: |
-          set -euo pipefail
-          [[ $LANE =~ '^[A-Za-z0-9_:-]+$' ]] || { echo "::error::invalid lane name"; exit 1; }
-          bundle install --quiet
-          bundle exec fastlane $LANE
+        uses: puyanlin/ios-selfhosted-ci/fastlane@v1
+        with:
+          lane: ${{ inputs.fastlane-lane }}
+          xcode: ${{ inputs.xcode }}
+          build-number: ${{ inputs.build-number }}
+          upload: ${{ inputs.upload }}

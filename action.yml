@@ -22,7 +22,7 @@ inputs:
     description: "'true' marks the build as TestFlight internal testing only"
     default: 'false'
   xcode:
-    description: Xcode.app to use, e.g. /Applications/Xcode.app
+    description: Xcode path or version (27.1, 27); empty = the repo's .xcode-version, else the runner default
     default: ''
 outputs:
   archive-path:

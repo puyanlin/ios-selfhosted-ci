@@ -101,6 +101,16 @@ GitHub 個人帳號沒有「全帳號共用」的 Actions secret，所以每個 
   ```
 - **修改流程**：改這裡的 `.github/workflows/*`，再 `git tag -f v1 && git push -f origin v1`，所有 app 下次執行就會用新版。（想要不可變的版本，可以改成釘在 commit SHA。）
 
+## 指定 Xcode 版本
+
+所有 workflow 用同一套規則選 Xcode（見 `xcode.sh`）：
+
+1. `xcode` 參數：可以填路徑（`/Applications/Xcode-beta.app`），**也可以填版本號**（`27.1`，或 `27`＝已安裝的最新 27.x，優先正式版）；
+2. 沒填就看 repo 裡的 **`.xcode-version`** 檔（xcodes／fastlane 的慣例，內容例如 `27.1`）；
+3. 都沒有就用 runner 預設（`/Applications/Xcode.app`）。
+
+可以用 [xcodes](https://github.com/XcodesOrg/xcodes) 並存安裝多個版本，再用 `.xcode-version` 讓各 repo 固定版本。
+
 參數說明見 [README.md 的 inputs 表](README.md#reusable-workflow-inputs)。
 
 ## 延伸閱讀

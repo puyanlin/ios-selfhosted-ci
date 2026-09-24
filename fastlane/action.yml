@@ -1,0 +1,27 @@
+name: iOS fastlane lane
+description: Run `bundle exec fastlane <lane>` on the self-hosted Mac with the selected Xcode.
+inputs:
+  lane:
+    required: true
+  xcode:
+    description: Xcode path or version (27.1, 27); empty = the repo's .xcode-version, else the runner default
+    default: ''
+  build-number:
+    default: ''
+  upload:
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - shell: zsh {0}
+      env:
+        LANE: ${{ inputs.lane }}
+        XCODE_APP: ${{ inputs.xcode }}
+        CI_BUILD_NUMBER: ${{ inputs.build-number }}
+        CI_UPLOAD: ${{ inputs.upload }}
+      run: |
+        set -euo pipefail
+        [[ $LANE =~ '^[A-Za-z0-9_:-]+$' ]] || { echo "::error::invalid lane name"; exit 1; }
+        source ${{ github.action_path }}/../xcode.sh
+        bundle install --quiet
+        bundle exec fastlane $LANE

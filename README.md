@@ -111,6 +111,16 @@ Personal GitHub accounts have no account-wide Actions secrets, so each repo need
   ```
 - **Change the pipeline** → edit `.github/workflows/*` here, then `git tag -f v1 && git push -f origin v1`. Every app picks it up on its next run. (Pin callers to a commit SHA instead of `v1` if you prefer immutable versions.)
 
+## Choosing the Xcode version
+
+Every workflow resolves Xcode the same way (see `xcode.sh`):
+
+1. the `xcode` input — a path (`/Applications/Xcode-beta.app`) **or a version** (`27.1`, or `27` = newest installed 27.x, release builds preferred over betas);
+2. otherwise the repo's **`.xcode-version`** file (the xcodes/fastlane convention, e.g. `27.1`);
+3. otherwise the runner default (`/Applications/Xcode.app`).
+
+Install several Xcodes side by side (e.g. with [xcodes](https://github.com/XcodesOrg/xcodes)) and pin per repo with `.xcode-version`.
+
 ## Reusable workflow inputs
 
 | Workflow | Input | Default | Notes |
@@ -122,7 +132,7 @@ Personal GitHub accounts have no account-wide Actions secrets, so each repo need
 | testflight | `scheme`, `team-id` | — | |
 | | `branch` | dispatched ref | Any branch/tag/SHA |
 | | `upload` | `true` | `false` = archive + export only |
-| | `xcode` | `/Applications/Xcode.app` | |
+| | `xcode` | `.xcode-version`, else runner default | Path or version (`27.1`, `27`) |
 | | `build-number` | `YYMMDD01` | Numeric only |
 | | `fastlane-lane` | — | Run `bundle exec fastlane <lane>` instead |
 | claude-review | `model` | `claude-opus-5-5` | Any Claude model ID |

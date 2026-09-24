@@ -9,7 +9,7 @@ on:
       project: { type: string, default: '' }
       destination: { type: string, default: simulator, description: "simulator or device (unsigned)" }
       test: { type: boolean, default: false }
-      xcode: { type: string, default: '' }
+      xcode: { type: string, default: '', description: 'Xcode path or version (27.1, 27); empty = .xcode-version, else the runner default' }
       runner-label: { type: string, default: macos-xcode }
 jobs:
   build:
