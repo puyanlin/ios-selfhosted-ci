@@ -41,10 +41,10 @@ runs:
         git fetch --no-tags --depth=200 origin "$BASE_REF" >/dev/null 2>&1 || true
         git diff "origin/$BASE_REF...HEAD" > "$DIFF" || git diff "origin/$BASE_REF" > "$DIFF"
         if [ "$PROVIDER" = claude ]; then
-          OUTPUT='Use `gh pr diff` for the changes. Post each concrete issue as an inline comment on the line, then finish with one `gh pr comment` summary: overall assessment + the issue list; if nothing is wrong, say so briefly.'
+          export OUTPUT='Use `gh pr diff` for the changes. Post each concrete issue as an inline comment on the line, then finish with one `gh pr comment` summary: overall assessment + the issue list; if nothing is wrong, say so briefly.'
         else
           # Other providers run without GitHub write tools; the workflow posts their answer as one PR comment.
-          OUTPUT="The PR diff is in $DIFF (paths are relative to the repository root). Do not modify any files. Reply with ONLY the review in Markdown: a one-paragraph overall assessment, then the issues as a list, each starting with \`path:line\`. If nothing is wrong, say so briefly."
+          export OUTPUT="The PR diff is in $DIFF (paths are relative to the repository root). Do not modify any files. Reply with ONLY the review in Markdown: a one-paragraph overall assessment, then the issues as a list, each starting with \`path:line\`. If nothing is wrong, say so briefly."
         fi
         python3 - "$TEMPLATE" "$RUNNER_TEMP/ai-review/prompt.md" <<'PY'
         import os,sys
