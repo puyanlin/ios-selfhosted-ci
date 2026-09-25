@@ -15,6 +15,10 @@ DIRS = [os.path.expanduser('~/Library/Developer/Xcode/UserData/Provisioning Prof
 KEYCHAIN = os.path.expanduser('~/Library/Keychains/ci.keychain-db')
 
 
+def utcnow():
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
 def load(path):
     raw = subprocess.run(['security', 'cms', '-D', '-i', path], capture_output=True).stdout
     p = plistlib.loads(raw)
@@ -85,7 +89,7 @@ def cmd_plan(args):
         if b not in best or p['ExpirationDate'] > best[b]['ExpirationDate']:
             best[b] = p
     for b, p in sorted(best.items()):
-        days = (p['ExpirationDate'] - datetime.datetime.utcnow()).days
+        days = (p['ExpirationDate'] - utcnow()).days
         if days < 30:
             print(f'::warning::Profile "{p["Name"]}" for {b} expires in {days} days', file=sys.stderr)
         print(f'PROFILE {b} {c99(b)} {p["Name"]}')
@@ -96,7 +100,7 @@ def cmd_list(args):
     ids = keychain_identities()
     for p in sorted(usable(team), key=lambda p: p['_appid']):
         cert = next((c for c in p['_certs'] if c in ids), None)
-        days = (p['ExpirationDate'] - datetime.datetime.utcnow()).days
+        days = (p['ExpirationDate'] - utcnow()).days
         print(f"{p['_appid']:50} {p['Name']:40} expires in {days:3}d  cert {'✓ ' + ids[cert] if cert else '✗ not in ci.keychain'}")
 
 
@@ -113,7 +117,7 @@ def cmd_match(args):
         if not cands:
             missing.append(b); continue
         p = cands[0]
-        days = (p['ExpirationDate'] - datetime.datetime.utcnow()).days
+        days = (p['ExpirationDate'] - utcnow()).days
         if days < 30:
             print(f'::warning::Profile "{p["Name"]}" for {b} expires in {days} days', file=sys.stderr)
         print(f"{b}\t{p['Name']}\t{next(c for c in p['_certs'] if c in ids)}")
@@ -129,7 +133,7 @@ def cmd_install(files):
         p = load(f)
         if p['_kind'] != 'app-store':
             sys.exit(f'✗ {f}: {p["_kind"]} profile — manual signing for TestFlight/App Store needs an App Store profile')
-        if p['ExpirationDate'] < datetime.datetime.utcnow():
+        if p['ExpirationDate'] < utcnow():
             sys.exit(f'✗ {f}: expired on {p["ExpirationDate"]:%Y-%m-%d}')
         cert = next((c for c in p['_certs'] if c in ids), None)
         for d in DIRS:
