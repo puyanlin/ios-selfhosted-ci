@@ -38,7 +38,7 @@ What you get:
 
 - **PR check** — every PR runs the unit tests on your Mac (UI tests skipped; build-only when there are no tests, or an unsigned device build). Enforced with a ruleset.
 - **TestFlight from anywhere** — `Actions › TestFlight › Run workflow`, type **any** branch/tag/commit (it doesn't even need to contain the workflow). Build number defaults to `YYMMDD01` and Xcode bumps it on clashes.
-- **Claude review** — each PR gets inline comments + a summary from Claude (Opus by default) via [anthropics/claude-code-action](https://github.com/anthropics/claude-code-action), on a dedicated runner so it never blocks builds.
+- **AI review** — each PR gets inline comments + a summary from Claude, Codex or Gemini (whichever you use), through its CLI on a dedicated runner so it never blocks builds.
 - **No certificates to juggle** — Xcode cloud signing with an App Store Connect API key; no p12/profiles in secrets, no fastlane match. (Already on fastlane? See [docs/fastlane.md](docs/fastlane.md).)
 - **One command per new app** — `scripts/bootstrap-repo.sh MyApp` sets up runners, workflows, ruleset and verifies a build.
 - **Change once, apply everywhere** — app repos only call the reusable workflows; edit prompts, models or steps here.

@@ -28,7 +28,7 @@
 
 - **PR check**：每個 PR 在你的 Mac 上跑 unit test（跳過 UI test；沒有 test 就只編譯，也可以改編不簽章的實機版），搭配 ruleset 強制「通過才能 merge」。
 - **隨時隨地打 TestFlight**：*Actions › TestFlight › Run workflow*，輸入**任何**分支、tag 或 commit（那個分支甚至不需要包含 workflow）。build 號預設 `YYMMDD01`，撞號時 Xcode 會自動往上加。
-- **Claude review**：每個 PR 由 Claude（預設 Opus）留 inline comment 和總結，跑在專用 runner 上，不會卡住 build。
+- **AI review**：每個 PR 由 Claude、Codex 或 Gemini（你用哪家就用哪家）留 inline comment 和總結，跑在專用 runner 上，不會卡住 build。
 - **不用管憑證檔**：Xcode 雲端簽章＋App Store Connect API 金鑰；不用把 p12、profile 放進 secrets，也不用 fastlane match。（已經在用 fastlane？見 [docs/fastlane.md](docs/fastlane.md)。）
 - **新 app 一個指令設好**：`scripts/bootstrap-repo.sh MyApp`，runner、workflow、ruleset 一次到位，並跑一次編譯驗證。
 - **改一次、全部生效**：app repo 只呼叫這裡的共用 workflow；prompt、模型、流程都在這裡改。
