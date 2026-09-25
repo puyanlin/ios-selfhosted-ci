@@ -13,11 +13,30 @@ if [[ ${BUILD_FOR:-simulator} == device ]]; then
   xcb build build "${COMMON[@]}" -destination 'generic/platform=iOS'
   endstep; RESULT="build passed (device)"
 elif [[ $RUN_TESTS == true ]]; then
-  SIM=$(xcrun simctl list devices available -j | python3 -c '
-import json,sys
-devs=[d for rt,ds in json.load(sys.stdin)["devices"].items() if "iOS" in rt for d in ds if d["name"].startswith("iPhone")]
-print(devs[-1]["udid"] if devs else "")')
-  [[ -z $SIM ]] && { echo "::error::No available iPhone simulator"; exit 1; }
+  # Each job gets its own throwaway simulator: parallel jobs sharing one device kill each other's test hosts.
+  SDKVER=$(xcrun --sdk iphonesimulator --show-sdk-version)
+  read -r RUNTIME DEVTYPE <<< "$(xcrun simctl list -j runtimes devicetypes | SDKVER=$SDKVER python3 -c '
+import json,os,re,sys
+d=json.load(sys.stdin); sdk=[int(x) for x in os.environ["SDKVER"].split(".")]
+v=lambda s:[int(x) for x in s.split(".")]
+rts=[r for r in d["runtimes"] if r.get("isAvailable") and "iOS" in r["name"]]
+# Prefer the runtime that matches this Xcode'"'"'s simulator SDK; otherwise the newest one not newer than it.
+same=[r for r in rts if v(r["version"])[:2]==sdk[:2]]
+older=sorted([r for r in rts if v(r["version"])<=sdk+[99]], key=lambda r:v(r["version"]))
+rt=(sorted(same,key=lambda r:v(r["version"]))[-1:] or older[-1:] or [None])[0]
+supported=[t for t in (rt or {}).get("supportedDeviceTypes",[]) if t.get("productFamily")=="iPhone"]
+plain=sorted([t for t in supported if re.fullmatch(r"iPhone \d+", t["name"])], key=lambda t:int(t["name"].split()[1]))
+pick=(plain or supported or [None])[-1]
+print((rt or {}).get("identifier",""), (pick or {}).get("identifier",""))')"
+  [[ -n $RUNTIME && -n $DEVTYPE ]] || { echo "::error::No iOS $SDKVER simulator runtime / iPhone device type installed"; exit 1; }
+  SIM=$(xcrun simctl create "ci-${GITHUB_RUN_ID:-local}-$$" $DEVTYPE $RUNTIME)
+  trap 'xcrun simctl shutdown $SIM >/dev/null 2>&1; xcrun simctl delete $SIM >/dev/null 2>&1; rm -rf $DD' EXIT
+  # A fresh device's first boot can take longer than xcodebuild's 60 s; boot it up front.
+  xcrun simctl boot $SIM
+  if ! perl -e 'alarm 300; exec @ARGV' xcrun simctl bootstatus $SIM >/dev/null 2>&1; then
+    echo "::error::Simulator did not finish booting within 5 minutes"; exit 1
+  fi
+  echo "Simulator: ${DEVTYPE##*.} / ${RUNTIME##*.} ($SIM)"
   SKIP=()
   if [[ ${SKIP_UI_TESTS:-true} == true ]]; then
     # UI tests (and Xcode's template testLaunchPerformance) are slow and flaky on CI; run unit tests only.
