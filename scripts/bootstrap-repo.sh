@@ -134,7 +134,10 @@ fi
 say "Verifying PR check ($default)"
 gh workflow run pr-check.yml -R $R --ref $default >/dev/null; sleep 15
 id=$(gh run list -R $R -w "PR check" -b $default -L 1 --json databaseId -q '.[0].databaseId')
-gh run watch $id -R $R --exit-status >/dev/null 2>&1 && echo "  ✅ build passed" || { echo "  ❌ failed: $(gh run view $id -R $R --json url -q .url)"; exit 1; }
+# Don't trust `gh run watch`'s exit code (it can fail on transient API errors); poll the run's own conclusion.
+until [[ $(gh run view $id -R $R --json status -q .status 2>/dev/null) == completed ]]; do sleep 10; done
+if [[ $(gh run view $id -R $R --json conclusion -q .conclusion) == success ]]; then echo "  ✅ PR check passed"
+else echo "  ❌ failed: $(gh run view $id -R $R --json url -q .url)"; exit 1; fi
 
 cat <<MSG
 
