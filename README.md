@@ -64,9 +64,11 @@ Cloud-managed distribution signing is available by default to Account Holder and
 *Access to Cloud Managed Distribution Certificate* permission. Whether an **App Manager key** can cloud-sign
 isn't documented — use Admin unless you've tested otherwise.
 
-If the app belongs to a team where you're only App Manager or Developer, ask that team's Account Holder or an
-Admin to create a team key (Admin) for you, or to give you the Admin role. Until then you can still use the
-PR check and Claude review (`--no-testflight`).
+If the app belongs to a team where you're only App Manager or Developer (typical for a company account), use
+**[manual signing](docs/manual-signing.md)**: an Apple Distribution certificate + App Store profiles from the
+team's Admin (or exported from the Mac you already publish from), and an App Manager key or your Apple ID +
+app-specific password for uploads — no Admin key needed. Otherwise you can still use the PR check and Claude
+review (`--no-testflight`).
 
 **GitHub**: you need admin rights on the app repos (runners, secrets, rulesets). Rulesets on **private** repos
 need GitHub Pro (personal accounts) or Team (organizations).
@@ -189,6 +191,7 @@ Install several Xcodes side by side (e.g. with [xcodes](https://github.com/Xcode
 | | `xcode` | `.xcode-version`, else runner default | Path or version (`27.1`, `27`) |
 | | `build-number` | `YYMMDD01` | Numeric only |
 | | `fastlane-lane` | — | Run `bundle exec fastlane <lane>` instead |
+| | `signing` | `cloud` | `manual` = your Distribution identity + App Store profiles ([docs](docs/manual-signing.md)) |
 | claude-review | `model` | `claude-opus-5-5` | Any Claude model ID |
 | | `claude-path`, `bun-path` | download each run | Point at local installs |
 | | `language` | `English` | Language of the review comments |
@@ -199,6 +202,7 @@ Install several Xcodes side by side (e.g. with [xcodes](https://github.com/Xcode
 - [docs/security.md](docs/security.md) — threat model and hardening
 - [docs/troubleshooting.md](docs/troubleshooting.md) — every pitfall we hit, with fixes
 - [docs/fastlane.md](docs/fastlane.md) — using your existing fastlane lanes
+- [docs/manual-signing.md](docs/manual-signing.md) — company teams without an Admin key
 
 ## License
 
