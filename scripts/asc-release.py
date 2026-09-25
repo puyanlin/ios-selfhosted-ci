@@ -15,12 +15,14 @@ submit options:
   --drop-unlisted         remove the version's locales that are not in --locales (deletes their description too)
   --release after-approval|manual   (default: keep current)
   --phased / --no-phased  7-day phased release on/off (default: keep current)
+  --screenshots-dir DIR   replace screenshots from DIR/<locale>/*.png|jpg (fastlane layout, sorted by file name);
+                          the device is detected from the pixel size, only the devices you provide are replaced
   --review-notes TEXT     notes for App Review
   --dry-run               show every step, change nothing
 
 Uses the API key from ~/.appstoreconnect/ci.env (scripts/ci-signing-setup.sh asc). Needs the App Manager or Admin role.
 """
-import argparse, json, os, sys, time
+import argparse, hashlib, json, os, struct, sys, time, urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from asc import call  # noqa: E402
 
@@ -46,6 +48,105 @@ def fail(msg):
 
 def rel(type_, id_):
     return {'data': {'type': type_, 'id': id_}}
+
+
+# Pixel size (portrait) → App Store Connect screenshot display type.
+DISPLAY_TYPES = {
+    (1320, 2868): 'APP_IPHONE_67', (1290, 2796): 'APP_IPHONE_67', (1284, 2778): 'APP_IPHONE_67',
+    (1242, 2688): 'APP_IPHONE_65', (1206, 2622): 'APP_IPHONE_61', (1179, 2556): 'APP_IPHONE_61',
+    (1170, 2532): 'APP_IPHONE_61', (1242, 2208): 'APP_IPHONE_55',
+    (2064, 2752): 'APP_IPAD_PRO_3GEN_129', (2048, 2732): 'APP_IPAD_PRO_3GEN_129',
+    (1668, 2388): 'APP_IPAD_PRO_3GEN_11', (1640, 2360): 'APP_IPAD_PRO_3GEN_11',
+    (416, 496): 'APP_WATCH_SERIES_10', (410, 502): 'APP_WATCH_ULTRA', (396, 484): 'APP_WATCH_SERIES_7',
+}
+
+
+def image_size(path):
+    with open(path, 'rb') as f:
+        head = f.read(32)
+        if head[:8] == b'\x89PNG\r\n\x1a\n':
+            return struct.unpack('>II', head[16:24])
+        f.seek(0); data = f.read()
+    i = 2  # JPEG: walk the segments to the SOF marker
+    while i < len(data):
+        if data[i] != 0xFF: i += 1; continue
+        marker = data[i + 1]
+        if marker in (0xC0, 0xC1, 0xC2):
+            h, w = struct.unpack('>HH', data[i + 5:i + 9]); return w, h
+        i += 2 + struct.unpack('>H', data[i + 2:i + 4])[0]
+    raise ValueError(f'unsupported image {path}')
+
+
+def plan_screenshots(dirpath, locales):
+    plan = {}  # locale -> display type -> [files]
+    for loc in locales:
+        d = os.path.join(dirpath, loc)
+        if not os.path.isdir(d):
+            continue
+        for fn in sorted(os.listdir(d)):
+            if not fn.lower().endswith(('.png', '.jpg', '.jpeg')):
+                continue
+            path = os.path.join(d, fn); w, h = image_size(path)
+            dt = DISPLAY_TYPES.get((min(w, h), max(w, h)))
+            if not dt:
+                fail(f'{path}: {w}×{h} is not an App Store screenshot size')
+            plan.setdefault(loc, {}).setdefault(dt, []).append(path)
+    for loc, types in plan.items():
+        for dt, files in types.items():
+            if len(files) > 10:
+                fail(f'{loc} {dt}: {len(files)} screenshots, App Store allows at most 10')
+    return plan
+
+
+def upload_screenshot(set_id, path):
+    data = open(path, 'rb').read()
+    r = call('POST', '/v1/appScreenshots', {'data': {'type': 'appScreenshots',
+             'attributes': {'fileName': os.path.basename(path), 'fileSize': len(data)},
+             'relationships': {'appScreenshotSet': rel('appScreenshotSets', set_id)}}})['data']
+    for op in r['attributes']['uploadOperations']:
+        chunk = data[op['offset']:op['offset'] + op['length']]
+        req = urllib.request.Request(op['url'], data=chunk, method=op['method'],
+                                     headers={h['name']: h['value'] for h in op.get('requestHeaders', [])})
+        urllib.request.urlopen(req, timeout=300).read()
+    call('PATCH', f"/v1/appScreenshots/{r['id']}", {'data': {'type': 'appScreenshots', 'id': r['id'],
+         'attributes': {'uploaded': True, 'sourceFileChecksum': hashlib.md5(data).hexdigest()}}})
+    return r['id']
+
+
+def replace_screenshots(loc_id, loc, types):
+    sets = {s['attributes']['screenshotDisplayType']: s['id'] for s in
+            call('GET', f'/v1/appStoreVersionLocalizations/{loc_id}/appScreenshotSets')['data']}
+    ids = []
+    for dt, files in types.items():
+        if DRY:
+            step(f"[dry run] would replace {loc} {dt} with {len(files)} screenshots: {', '.join(os.path.basename(f) for f in files)}")
+            continue
+        sid = sets.get(dt) or call('POST', '/v1/appScreenshotSets', {'data': {'type': 'appScreenshotSets',
+              'attributes': {'screenshotDisplayType': dt},
+              'relationships': {'appStoreVersionLocalization': rel('appStoreVersionLocalizations', loc_id)}}})['data']['id']
+        for old in call('GET', f'/v1/appScreenshotSets/{sid}/appScreenshots')['data']:
+            call('DELETE', f"/v1/appScreenshots/{old['id']}")
+        new = [upload_screenshot(sid, f) for f in files]
+        call('PATCH', f'/v1/appScreenshotSets/{sid}/relationships/appScreenshots',
+             {'data': [{'type': 'appScreenshots', 'id': i} for i in new]})
+        step(f'Screenshots {loc} {dt}: {len(new)} uploaded')
+        ids += new
+    return ids
+
+
+def wait_screenshots(ids, minutes=15):
+    deadline = time.time() + minutes * 60
+    while ids and time.time() < deadline:
+        states = {i: call('GET', f'/v1/appScreenshots/{i}?fields[appScreenshots]=assetDeliveryState')['data']
+                  ['attributes']['assetDeliveryState']['state'] for i in ids}
+        bad = [i for i, st in states.items() if st == 'FAILED']
+        if bad:
+            fail(f'App Store Connect rejected {len(bad)} screenshot(s) — check sizes/format')
+        if all(st == 'COMPLETE' for st in states.values()):
+            step('Screenshots processed'); return
+        time.sleep(10)
+    if ids:
+        fail('Screenshots are still processing — rerun the command in a few minutes')
 
 
 def find_app(bundle_id):
@@ -206,6 +307,23 @@ def cmd_submit(a):
         step(f"⚠️ notes for {loc} ignored (not in --locales)")
     if missing:
         fail(f"What's New is empty for: {', '.join(missing)} (use --whats-new {missing[0]}=… or {a.notes_dir or 'fastlane/metadata'}/<locale>/release_notes.txt)")
+    # 3b. Screenshots (only the devices provided are replaced; a new version already inherits the previous ones).
+    if a.screenshots_dir:
+        shots = plan_screenshots(a.screenshots_dir, wanted)
+        if not shots:
+            fail(f'No screenshots found under {a.screenshots_dir}/<locale>/ for {", ".join(wanted)}')
+        if vid == 'NEW':
+            for loc, types in shots.items():
+                for dt, files in types.items():
+                    step(f"[dry run] would replace {loc} {dt} with {len(files)} screenshots")
+        else:
+            by_loc_now = {l['attributes']['locale']: l['id'] for l in localizations(vid)}
+            uploaded = []
+            for loc, types in shots.items():
+                uploaded += replace_screenshots(by_loc_now[loc], loc, types)
+            if not DRY:
+                wait_screenshots(uploaded)
+
     # 4. Release type, phased release, review notes.
     if a.release:
         rt = {'after-approval': 'AFTER_APPROVAL', 'manual': 'MANUAL'}[a.release]
@@ -274,6 +392,7 @@ def main():
     g.add_argument('--no-phased', dest='phased', action='store_false')
     m.add_argument('--review-notes'); m.add_argument('--dry-run', action='store_true')
     m.add_argument('--locales'); m.add_argument('--drop-unlisted', action='store_true')
+    m.add_argument('--screenshots-dir')
     a = p.parse_args()
     (cmd_status if a.cmd == 'status' else cmd_submit)(a)
 

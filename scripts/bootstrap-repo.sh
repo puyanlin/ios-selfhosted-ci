@@ -12,13 +12,16 @@
 #   --no-test        PR check only builds (the default runs unit tests; UI tests are always skipped)
 #   --skip-testing "Target/Suite ..."  extra tests to skip in the PR check
 #   --no-ruleset     don't create the "PR check must pass" ruleset (e.g. the default branch doesn't build yet)
+#   --team TEAMID     Apple Developer Team ID of this app when it isn't TEAM_ID from the config (e.g. a company team)
+#   --signing manual  TestFlight signs with your own Apple Distribution identity + App Store profiles
+#                     (company teams without an Admin key; see ci-signing-setup.sh p12 / profile / appleid)
 #   --no-testflight  skip the TestFlight workflow (e.g. the app belongs to an App Store Connect team you can't sign for)
 set -euo pipefail
 source ${0:A:h}/_config.sh
 TEMPLATES=${0:A:h}/../templates
 
 repo=${1:?usage: bootstrap-repo.sh <repo> [options]}; shift
-scheme=""; project=""; destination=""; language=$REVIEW_LANGUAGE; branches=(); workflows=(pr-check testflight claude-review); want_ruleset=1; no_test=0; skip_testing=""
+scheme=""; project=""; destination=""; language=$REVIEW_LANGUAGE; branches=(); workflows=(pr-check testflight claude-review); want_ruleset=1; no_test=0; skip_testing=""; signing=""
 while (( $# )); do
   case $1 in
     --scheme) scheme=$2; shift 2 ;;
@@ -27,6 +30,8 @@ while (( $# )); do
     --review-language) language=$2; shift 2 ;;
     --branch) branches+=$2; shift 2 ;;
     --no-testflight) workflows=(${workflows:#testflight}); shift ;;
+    --signing) signing=$2; shift 2 ;;
+    --team) TEAM_ID=$2; shift 2 ;;
     --no-ruleset) want_ruleset=0; shift ;;
     --no-test) no_test=1; shift ;;
     --skip-testing) skip_testing=$2; shift 2 ;;
@@ -76,6 +81,7 @@ render() {  # render <template>
   local with="" review_with=""
   [[ -n $project ]] && with+="      project: $project"$'\n'
   [[ $1 == pr-check && -n $destination ]] && with+="      destination: $destination"$'\n'
+  [[ $1 == testflight && -n $signing ]] && with+="      signing: $signing"$'\n'
   (( no_test )) && [[ $1 == pr-check ]] && with+="      test: false"$'\n'
   [[ $1 == pr-check && -n $skip_testing ]] && with+="      skip-testing: $skip_testing"$'\n'
   if [[ $1 == claude-review ]]; then
@@ -103,7 +109,8 @@ for br in $all_branches; do
     if [[ -n $sha && "$(gh api "repos/$R/contents/$fp?ref=$br" -H 'Accept: application/vnd.github.raw')" == "$(cat $tmp/$wf.yml)" ]]; then
       echo "  $br $wf: unchanged"; continue
     fi
-    args=(-f "message=ci: $wf workflow (ios-selfhosted-ci)${COMMIT_TRAILER:+$'\n\n'$COMMIT_TRAILER}" -f branch=$br -f "content=$(base64 -i $tmp/$wf.yml)")
+    msg="ci: $wf workflow (ios-selfhosted-ci)"; [[ -n $COMMIT_TRAILER ]] && msg+=$'\n\n'"$COMMIT_TRAILER"
+    args=(-f "message=$msg" -f branch=$br -f "content=$(base64 -i $tmp/$wf.yml)")
     [[ -n $sha ]] && args+=(-f sha=$sha)
     gh api -X PUT repos/$R/contents/$fp $args -q '.commit.sha[0:7]' | sed "s|^|  $br $wf: |"
   done

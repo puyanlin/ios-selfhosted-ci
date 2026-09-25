@@ -53,8 +53,10 @@
 雲端管理的發佈簽章，帳號持有人和「管理」預設就能用；「開發者」要另外勾選 *Access to Cloud Managed Distribution
 Certificate* 權限。「App 管理」角色的**金鑰**能不能雲端簽章，官方沒有寫清楚，沒實測過之前請用「管理」。
 
-如果 app 屬於另一個團隊，而你在那邊只是「App 管理」或「開發者」，請那個團隊的帳號持有人或「管理」角色幫你建一把
-團隊金鑰（角色選「管理」），或把你的角色加上「管理」。在那之前還是可以用 PR check 和 Claude review（`--no-testflight`）。
+如果 app 屬於另一個團隊，而你在那邊只是「App 管理」或「開發者」（公司帳號常見的情況），請用
+**[手動簽章](docs/manual-signing.zh-TW.md)**：由團隊的「管理」角色提供 Apple Distribution 憑證和 App Store 描述檔
+（或從你平常上架用的那台 Mac 匯出），上傳用「App 管理」金鑰或你的 Apple ID＋App 專用密碼，完全不需要「管理」金鑰。
+不然也可以只用 PR check 和 Claude review（`--no-testflight`）。
 
 **GitHub**：要有 app repo 的管理員權限（runner、secret、ruleset）。**private** repo 要用 ruleset，個人帳號需要
 GitHub Pro，組織需要 Team 方案。
@@ -168,6 +170,7 @@ scripts/asc-release.py submit --bundle-id com.example.app --version 1.4.0 \
 - [docs/security.md](docs/security.md)：威脅模型與加固建議
 - [docs/troubleshooting.md](docs/troubleshooting.md)：實際踩過的坑與解法
 - [docs/fastlane.md](docs/fastlane.md)：沿用既有的 fastlane lane
+- [docs/manual-signing.zh-TW.md](docs/manual-signing.zh-TW.md)：公司團隊、沒有「管理」金鑰時的手動簽章
 
 ## 授權
 
