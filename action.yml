@@ -1,5 +1,5 @@
 name: iOS Self-Hosted TestFlight
-description: Archive, sign (Xcode cloud signing or your own Distribution identity) and upload any branch to TestFlight from your own Mac runner.
+description: Archive, sign and upload any branch to TestFlight from your own Mac runner, with cloud or manual signing.
 author: puyanlin
 branding:
   icon: upload-cloud
