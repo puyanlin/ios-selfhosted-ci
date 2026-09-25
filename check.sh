@@ -29,8 +29,22 @@ plain=sorted([t for t in supported if re.fullmatch(r"iPhone \d+", t["name"])], k
 pick=(plain or supported or [None])[-1]
 print((rt or {}).get("identifier",""), (pick or {}).get("identifier",""))')"
   [[ -n $RUNTIME && -n $DEVTYPE ]] || { echo "::error::No iOS $SDKVER simulator runtime / iPhone device type installed"; exit 1; }
+  # One simulator test run per machine at a time: booting several fresh simulators at once on a busy Mac
+  # can take forever. Builds still run in parallel; only this phase is serialized (mkdir is atomic).
+  LOCK=$HOME/actions-runners/_locks/simulator-tests
+  mkdir -p ${LOCK:h}
+  waited=0
+  until mkdir $LOCK 2>/dev/null; do
+    holder=$(cat $LOCK/pid 2>/dev/null || true)
+    if [[ -n $holder ]] && ! kill -0 $holder 2>/dev/null; then rm -rf $LOCK; continue; fi   # stale lock
+    (( waited % 60 == 0 )) && echo "Waiting for another job's simulator tests to finish…"
+    sleep 5; (( waited += 5 ))
+    (( waited > 1800 )) && { echo "::error::Waited 30 minutes for the simulator lock"; exit 1; }
+  done
+  echo $$ > $LOCK/pid
   SIM=$(xcrun simctl create "ci-${GITHUB_RUN_ID:-local}-$$" $DEVTYPE $RUNTIME)
-  trap 'xcrun simctl shutdown $SIM >/dev/null 2>&1; xcrun simctl delete $SIM >/dev/null 2>&1; rm -rf $DD' EXIT
+  # Cleanup must never hang the job: give simctl at most a minute, then release the lock.
+  trap 'perl -e "alarm 60; exec @ARGV" xcrun simctl shutdown $SIM >/dev/null 2>&1; perl -e "alarm 60; exec @ARGV" xcrun simctl delete $SIM >/dev/null 2>&1; rm -rf $LOCK $DD' EXIT
   # A fresh device's first boot can take longer than xcodebuild's 60 s; boot it up front.
   xcrun simctl boot $SIM
   if ! perl -e 'alarm 300; exec @ARGV' xcrun simctl bootstatus $SIM >/dev/null 2>&1; then
