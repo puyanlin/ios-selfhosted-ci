@@ -66,5 +66,5 @@ or set `signing: manual` in the repo's `.github/workflows/testflight.yml`. The T
 - Submitting for review (`asc-release.py`) needs an API key; with only an Apple ID, submit on the website.
 - `internal-only` can't be applied through `altool`.
 - Profiles expire after a year; the job warns 30 days ahead. Renewed profile? Run `profile` again.
-- Tested: a single-target company app (Chroma), cloud path regression. Not yet tested: a multi-target app
+- Tested: a single-target app in a company team, and the cloud path (no regression). Not yet tested: a multi-target app
   (extensions + watch app) with manual signing, and an Apple ID upload from a runner job.

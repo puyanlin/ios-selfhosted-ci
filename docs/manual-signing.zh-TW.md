@@ -62,5 +62,5 @@ scripts/bootstrap-repo.sh MyCompanyApp --signing manual
 - 送審（`asc-release.py`）需要 API 金鑰；只有 Apple ID 的話，送審要在網頁上按。
 - 透過 `altool` 上傳時，「僅限內部測試」設定不會生效。
 - 描述檔一年到期，到期前 30 天 job 會警告。更新描述檔後再跑一次 `profile`。
-- 已實測：單一 target 的公司 app（Chroma）、雲端簽章沒有退步。尚未實測：有 extension＋watch app 的多 target app 用手動簽章，
+- 已實測：公司團隊裡的單一 target app，以及雲端簽章沒有退步。尚未實測：有 extension＋watch app 的多 target app 用手動簽章，
   以及從 runner job 用 Apple ID 上傳。
