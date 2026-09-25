@@ -8,7 +8,9 @@ on:
       scheme: { type: string, required: true, description: 'Scheme; several space-separated candidates allowed' }
       project: { type: string, default: '' }
       destination: { type: string, default: simulator, description: "simulator or device (unsigned)" }
-      test: { type: boolean, default: false }
+      test: { type: boolean, default: true, description: 'Run unit tests on an iPhone simulator (UI tests skipped; falls back to a build when the scheme has no tests). false = build only' }
+      skip-ui-tests: { type: boolean, default: true }
+      skip-testing: { type: string, default: '', description: 'Extra space-separated -skip-testing identifiers' }
       xcode: { type: string, default: '', description: 'Xcode path or version (27.1, 27); empty = .xcode-version, else the runner default' }
       runner-label: { type: string, default: macos-xcode }
 jobs:
@@ -28,4 +30,6 @@ jobs:
           project: ${{ inputs.project }}
           destination: ${{ inputs.destination }}
           test: ${{ inputs.test }}
+          skip-ui-tests: ${{ inputs.skip-ui-tests }}
+          skip-testing: ${{ inputs.skip-testing }}
           xcode: ${{ inputs.xcode }}

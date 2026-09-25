@@ -27,7 +27,7 @@ For a solo developer with a handful of private iOS apps:
 
 What you get:
 
-- **PR check** — every PR builds on your Mac (simulator or unsigned device build; optional tests). Enforced with a ruleset.
+- **PR check** — every PR runs the unit tests on your Mac (UI tests skipped; build-only when there are no tests, or an unsigned device build). Enforced with a ruleset.
 - **TestFlight from anywhere** — `Actions › TestFlight › Run workflow`, type **any** branch/tag/commit (it doesn't even need to contain the workflow). Build number defaults to `YYMMDD01` and Xcode bumps it on clashes.
 - **Claude review** — each PR gets inline comments + a summary from Claude (Opus by default) via [anthropics/claude-code-action](https://github.com/anthropics/claude-code-action), on a dedicated runner so it never blocks builds.
 - **No certificates to juggle** — Xcode cloud signing with an App Store Connect API key; no p12/profiles in secrets, no fastlane match. (Already on fastlane? See [docs/fastlane.md](docs/fastlane.md).)
@@ -88,6 +88,9 @@ scripts/bootstrap-repo.sh MyApp --review-language "Traditional Chinese"
 scripts/bootstrap-repo.sh MyApp --no-testflight
 # no ruleset yet (the default branch does not build yet):
 scripts/bootstrap-repo.sh MyApp --no-ruleset
+# PR check builds only (tests are broken for now) / skip some tests:
+scripts/bootstrap-repo.sh MyApp --no-test
+scripts/bootstrap-repo.sh MyApp --skip-testing "MyAppTests/SlowTests"
 ```
 
 Re-running it on a repo that is already set up is safe: it only updates changed caller files and never duplicates the ruleset. Set `XCODE_BETA_APP` in the config to offer a beta Xcode in the TestFlight menu.
@@ -130,7 +133,9 @@ Install several Xcodes side by side (e.g. with [xcodes](https://github.com/Xcode
 | pr-check | `scheme` | — | Several space-separated candidates allowed |
 | | `project` | auto | `.xcodeproj`/`.xcworkspace` at the root |
 | | `destination` | `simulator` | `device` = unsigned device build |
-| | `test` | `false` | Run tests on an iPhone simulator |
+| | `test` | `true` | Unit tests on an iPhone simulator (ad-hoc signed test host); falls back to a build when the scheme has no tests |
+| | `skip-ui-tests` | `true` | Skip every `*UITests` target |
+| | `skip-testing` | — | Extra `-skip-testing` identifiers, space separated |
 | testflight | `scheme`, `team-id` | — | |
 | | `branch` | dispatched ref | Any branch/tag/SHA |
 | | `upload` | `true` | `false` = archive + export only |

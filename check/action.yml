@@ -6,8 +6,14 @@ inputs:
   project:
     default: ''
   test:
-    description: "'true' runs the scheme's tests on an iPhone simulator; 'false' only builds"
-    default: 'false'
+    description: "'true' (default) runs the scheme's unit tests on an iPhone simulator (falls back to a build when the scheme has no tests); 'false' only builds"
+    default: 'true'
+  skip-ui-tests:
+    description: "'true' (default) skips every *UITests target when running tests"
+    default: 'true'
+  skip-testing:
+    description: 'Extra space-separated -skip-testing identifiers, e.g. "MyAppTests/SlowTests"'
+    default: ''
   destination:
     description: "'simulator' (default) or 'device' (unsigned; use when an SDK has no arm64 simulator slice)"
     default: 'simulator'
@@ -23,6 +29,8 @@ runs:
         PROJECT: ${{ inputs.project }}
         RUN_TESTS: ${{ inputs.test }}
         BUILD_FOR: ${{ inputs.destination }}
+        SKIP_UI_TESTS: ${{ inputs.skip-ui-tests }}
+        SKIP_TESTING: ${{ inputs.skip-testing }}
         XCODE_APP: ${{ inputs.xcode }}
       run: ${{ github.action_path }}/../check.sh
     - if: failure()

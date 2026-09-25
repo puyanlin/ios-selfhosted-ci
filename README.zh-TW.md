@@ -17,7 +17,7 @@
 
 功能：
 
-- **PR check**：每個 PR 在你的 Mac 上編譯（模擬器或不簽章的實機版，可選擇跑測試），搭配 ruleset 強制「通過才能 merge」。
+- **PR check**：每個 PR 在你的 Mac 上跑 unit test（跳過 UI test；沒有 test 就只編譯，也可以改編不簽章的實機版），搭配 ruleset 強制「通過才能 merge」。
 - **隨時隨地打 TestFlight**：*Actions › TestFlight › Run workflow*，輸入**任何**分支、tag 或 commit（那個分支甚至不需要包含 workflow）。build 號預設 `YYMMDD01`，撞號時 Xcode 會自動往上加。
 - **Claude review**：每個 PR 由 Claude（預設 Opus）留 inline comment 和總結，跑在專用 runner 上，不會卡住 build。
 - **不用管憑證檔**：Xcode 雲端簽章＋App Store Connect API 金鑰；不用把 p12、profile 放進 secrets，也不用 fastlane match。（已經在用 fastlane？見 [docs/fastlane.md](docs/fastlane.md)。）
@@ -78,6 +78,9 @@ scripts/bootstrap-repo.sh MyApp --review-language "Traditional Chinese (Taiwan)"
 scripts/bootstrap-repo.sh MyApp --no-testflight
 # 先不要 ruleset（預設分支還編不過時）：
 scripts/bootstrap-repo.sh MyApp --no-ruleset
+# PR check 只編譯（test 暫時壞掉時）／跳過部分 test：
+scripts/bootstrap-repo.sh MyApp --no-test
+scripts/bootstrap-repo.sh MyApp --skip-testing "MyAppTests/SlowTests"
 ```
 
 已經設好的 repo 重跑也安全：只會更新有變動的呼叫檔，不會重複建立 ruleset。在設定檔設 `XCODE_BETA_APP`，TestFlight 的 Xcode 選單就會多出 beta 選項。

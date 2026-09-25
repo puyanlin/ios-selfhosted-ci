@@ -9,6 +9,8 @@
 #   --project      only needed when the project is not at the repo root
 #   --destination  device = PR check builds for device (unsigned); use when an SDK lacks an arm64 simulator slice
 #   --branch       extra long-lived branches that also get the workflows and the ruleset
+#   --no-test        PR check only builds (the default runs unit tests; UI tests are always skipped)
+#   --skip-testing "Target/Suite ..."  extra tests to skip in the PR check
 #   --no-ruleset     don't create the "PR check must pass" ruleset (e.g. the default branch doesn't build yet)
 #   --no-testflight  skip the TestFlight workflow (e.g. the app belongs to an App Store Connect team you can't sign for)
 set -euo pipefail
@@ -16,7 +18,7 @@ source ${0:A:h}/_config.sh
 TEMPLATES=${0:A:h}/../templates
 
 repo=${1:?usage: bootstrap-repo.sh <repo> [options]}; shift
-scheme=""; project=""; destination=""; language=$REVIEW_LANGUAGE; branches=(); workflows=(pr-check testflight claude-review); want_ruleset=1
+scheme=""; project=""; destination=""; language=$REVIEW_LANGUAGE; branches=(); workflows=(pr-check testflight claude-review); want_ruleset=1; no_test=0; skip_testing=""
 while (( $# )); do
   case $1 in
     --scheme) scheme=$2; shift 2 ;;
@@ -26,6 +28,8 @@ while (( $# )); do
     --branch) branches+=$2; shift 2 ;;
     --no-testflight) workflows=(${workflows:#testflight}); shift ;;
     --no-ruleset) want_ruleset=0; shift ;;
+    --no-test) no_test=1; shift ;;
+    --skip-testing) skip_testing=$2; shift 2 ;;
     *) echo "unknown option: $1"; exit 1 ;;
   esac
 done
@@ -72,6 +76,8 @@ render() {  # render <template>
   local with="" review_with=""
   [[ -n $project ]] && with+="      project: $project"$'\n'
   [[ $1 == pr-check && -n $destination ]] && with+="      destination: $destination"$'\n'
+  (( no_test )) && [[ $1 == pr-check ]] && with+="      test: false"$'\n'
+  [[ $1 == pr-check && -n $skip_testing ]] && with+="      skip-testing: $skip_testing"$'\n'
   if [[ $1 == claude-review ]]; then
     local c=$(command -v claude || true) b=$(command -v bun || true)
     [[ -n $c || -n $b || -n $language ]] && review_with="    with:"$'\n'
