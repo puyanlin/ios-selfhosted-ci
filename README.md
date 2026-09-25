@@ -13,16 +13,6 @@ This project is the **infrastructure** layer: self-hosted runners, reusable work
 
 [繁體中文說明 →](README.zh-TW.md)
 
-```
- app repo (thin caller files)            this repo (reusable workflows + actions)          your Mac mini
- ┌──────────────────────────┐   uses   ┌────────────────────────────────────┐  runs-on  ┌─────────────────────┐
- │ .github/workflows/        │ ───────▶ │ pr-check.yml      unsigned build    │ ────────▶ │ runner  macos-xcode  │
- │   pr-check.yml   (8 lines)│          │ testflight.yml    archive → upload  │           │ runner  claude-review│
- │   testflight.yml          │          │ claude-review.yml Claude PR review  │           │ ci.keychain + ASC key│
- │   claude-review.yml       │          └────────────────────────────────────┘           └─────────────────────┘
- └──────────────────────────┘
-```
-
 ## Why
 
 For a solo developer with a handful of private iOS apps:
