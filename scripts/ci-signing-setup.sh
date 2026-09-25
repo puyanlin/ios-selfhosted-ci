@@ -55,6 +55,13 @@ p12)
   security import $p12 -k $KC -P "$p12pass" -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productbuild
   # Without this, codesign stops at a (headless, invisible) permission prompt until the job times out.
   security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pass" $KC >/dev/null
+  # A Distribution identity is only "valid" when its Apple WWDR intermediate is available; add the current ones.
+  if ! security find-identity -v -p codesigning $KC | grep -q 'Distribution'; then
+    for ca in AppleWWDRCAG3 AppleWWDRCAG6; do
+      curl -fsSL -o /tmp/$ca.cer https://www.apple.com/certificateauthority/$ca.cer && security import /tmp/$ca.cer -k $KC >/dev/null 2>&1 || true
+      rm -f /tmp/$ca.cer
+    done
+  fi
   echo "Identities in ci.keychain:"; security find-identity -v -p codesigning $KC
   ;;
 profile)
@@ -68,7 +75,8 @@ appleid)
   read -rs "apppass?App-specific password for $appleid (hidden): "; echo
   security unlock-keychain -p "$(cat $PASSFILE)" $KC
   security add-generic-password -U -a "$appleid" -s ios-selfhosted-ci-upload -w "$apppass" $KC
-  printf 'ASC_APPLE_ID=%s\n' "$appleid" > $DIR/ci-$team.env && chmod 600 $DIR/ci-$team.env
+  env=$DIR/ci-$team.env; touch $env && chmod 600 $env
+  { grep -v '^ASC_APPLE_ID=' $env || true; printf 'ASC_APPLE_ID=%s\n' "$appleid"; } > $env.tmp && mv $env.tmp $env
   echo "Uploads for team $team will use $appleid ($DIR/ci-$team.env). Submitting for review still needs an API key or the website."
   ;;
 status)

@@ -3,6 +3,9 @@
 
   profiles.py list [--team T]                       App Store profiles usable for manual signing
   profiles.py match --team T BUNDLE [BUNDLE ...]    print "bundle<TAB>profile name<TAB>cert sha1" per bundle; exit 1 if any is missing
+  profiles.py plan --team T                         pick ONE signing identity and print "IDENTITY <sha1>" then
+                                                    "PROFILE <bundle id> <build-setting key> <profile name>" for every
+                                                    exact-bundle App Store profile that uses it (all targets, no scheme needed)
   profiles.py install FILE.mobileprovision ...      copy into Xcode's profile folders (by UUID) after checking them
 """
 import datetime, fnmatch, glob, hashlib, os, plistlib, shutil, subprocess, sys
@@ -49,6 +52,43 @@ def usable(team=None):
 def matches(p, team, bundle):
     prefix, _, pattern = p['_appid'].partition('.')
     return prefix == team and fnmatch.fnmatchcase(bundle, pattern)
+
+
+def c99(s):
+    """Xcode's :c99extidentifier: every non-identifier character becomes '_' (a leading digit is replaced too)."""
+    out = ''.join(ch if (ch.isalnum() or ch == '_') else '_' for ch in s)
+    return ('_' + out[1:]) if out[:1].isdigit() else out
+
+
+def cmd_plan(args):
+    team = args[args.index('--team') + 1]
+    ids = keychain_identities()
+    profs = [p for p in usable(team) if not p['_appid'].endswith('*')]
+    # One identity for the whole archive: the keychain certificate referenced by the most profiles
+    # (during a certificate rotation, profiles may point at different certificates).
+    counts = {}
+    for p in profs:
+        for c in p['_certs']:
+            if c in ids:
+                counts[c] = counts.get(c, 0) + 1
+    if not counts:
+        print(f"::error::No App Store profile for team {team} matches a Distribution identity in ci.keychain "
+              "(ci-signing-setup.sh p12 … / profile …)", file=sys.stderr)
+        sys.exit(1)
+    cert = max(counts, key=counts.get)
+    print(f'IDENTITY {cert} {ids[cert]}')
+    best = {}
+    for p in profs:
+        if cert not in p['_certs']:
+            continue
+        b = p['_appid'].split('.', 1)[1]
+        if b not in best or p['ExpirationDate'] > best[b]['ExpirationDate']:
+            best[b] = p
+    for b, p in sorted(best.items()):
+        days = (p['ExpirationDate'] - datetime.datetime.utcnow()).days
+        if days < 30:
+            print(f'::warning::Profile "{p["Name"]}" for {b} expires in {days} days', file=sys.stderr)
+        print(f'PROFILE {b} {c99(b)} {p["Name"]}')
 
 
 def cmd_list(args):
@@ -101,4 +141,4 @@ def cmd_install(files):
 
 if __name__ == '__main__':
     cmd, rest = (sys.argv[1], sys.argv[2:]) if len(sys.argv) > 1 else ('', [])
-    {'list': cmd_list, 'match': cmd_match, 'install': cmd_install}.get(cmd, lambda _: sys.exit(__doc__))(rest)
+    {'list': cmd_list, 'match': cmd_match, 'plan': cmd_plan, 'install': cmd_install}.get(cmd, lambda _: sys.exit(__doc__))(rest)

@@ -14,6 +14,7 @@ CI_KC=$HOME/Library/Keychains/ci.keychain-db
 [[ -f $CI_KC ]] || { echo "::error::No ci.keychain on this Mac: run scripts/ci-signing-setup.sh keychain"; exit 1; }
 security unlock-keychain -p "$(cat $HOME/.appstoreconnect/ci-keychain.pass)" $CI_KC
 SIGNING=${SIGNING_STYLE:-cloud}
+typeset -A PROFILES; CERT=""
 
 # Upload auth: per-team file first (ci-<TEAMID>.env), then the default ci.env.
 ASC_KEY_ID=""; ASC_ISSUER_ID=""; ASC_APPLE_ID=""
@@ -37,26 +38,21 @@ BUILD=${BUILD_NUMBER:-$(date +%y%m%d)01}
 ARCHIVE=$HOME/Library/Developer/Xcode/Archives/$(date +%F)/$SCHEME-$BUILD-ci-$GITHUB_RUN_ID.xcarchive
 
 if [[ $SIGNING == manual ]]; then
-  # Map every app/extension bundle ID of the project to an installed App Store profile, and sign the archive
-  # with it: each target picks its own profile through a nested build-setting macro, SPM targets get none.
-  step "Manual signing: matching provisioning profiles"
-  BUNDLES=(${(f)"$(xcodebuild "${PROJ_ARGS[@]}" -scheme "$SCHEME" -configuration $CONFIGURATION -destination generic/platform=iOS \
-    -showBuildSettings -json 2>/dev/null | python3 -c '
-import json,sys
-for t in json.load(sys.stdin):
-    b=t["buildSettings"]
-    if b.get("WRAPPER_EXTENSION") in ("app","appex") and b.get("PRODUCT_BUNDLE_IDENTIFIER"): print(b["PRODUCT_BUNDLE_IDENTIFIER"])' | sort -u)"})
-  (( ${#BUNDLES} )) || { echo "::error::Could not read the bundle IDs of $SCHEME"; exit 1; }
-  MAP=(${(f)"$(python3 ${0:A:h}/scripts/profiles.py match --team $TEAM_ID $BUNDLES)"}) || exit 1
+  # Hand xcodebuild every App Store profile of the team that uses one Distribution identity; each target
+  # picks its own through a nested build-setting macro keyed by its bundle ID (SPM targets resolve to none).
+  # Listing targets up front is unreliable (-showBuildSettings -scheme skips implicit dependencies such as
+  # extensions and watch apps), so the archive itself is the ground truth for the export afterwards.
+  step "Manual signing: profiles"
+  PLAN=(${(f)"$(python3 ${0:A:h}/scripts/profiles.py plan --team $TEAM_ID)"}) || exit 1
   PROFILE_ARGS=('PROVISIONING_PROFILE_SPECIFIER=$(CI_PROFILE_$(PRODUCT_BUNDLE_IDENTIFIER:c99extidentifier))')
-  typeset -A PROFILES
-  for line in $MAP; do
-    b=${line%%$'\t'*}; rest=${line#*$'\t'}; name=${rest%%$'\t'*}; CERT=${rest##*$'\t'}
-    PROFILES[$b]=$name
-    PROFILE_ARGS+=("CI_PROFILE_$(python3 -c 'import re,sys;s=re.sub(r"[^A-Za-z0-9_]","_",sys.argv[1]);print(("_"+s) if s[0].isdigit() else s)' $b)=$name")
-    echo "  $b → $name"
+  for line in $PLAN; do
+    parts=(${(s: :)line})
+    case $parts[1] in
+      IDENTITY) CERT=$parts[2]; echo "  identity: ${parts[3,-1]} ($CERT)" ;;
+      PROFILE)  PROFILES[$parts[2]]="${parts[4,-1]}"; PROFILE_ARGS+=("CI_PROFILE_$parts[3]=${parts[4,-1]}")
+                echo "  $parts[2] → ${parts[4,-1]}" ;;
+    esac
   done
-  echo "Signing identity: $CERT"
   endstep
   step "Archive $SCHEME ($PROJECT, build $BUILD, manual signing)"
   xcb archive archive "${PROJ_ARGS[@]}" -scheme "$SCHEME" -configuration $CONFIGURATION \
@@ -81,27 +77,32 @@ BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleIde
 # Cloud signing uploads straight from exportArchive. Manual signing exports an .ipa first so the entitlements
 # can be verified, then uploads it with altool (API key or Apple ID).
 if [[ $SIGNING == manual ]]; then DEST=export; else [[ $UPLOAD == true ]] && DEST=upload || DEST=export; fi
-{
-  echo '<?xml version="1.0" encoding="UTF-8"?>'
-  echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
-  echo '<plist version="1.0"><dict>'
-  echo "  <key>method</key><string>app-store-connect</string>"
-  echo "  <key>destination</key><string>$DEST</string>"
-  echo "  <key>teamID</key><string>$TEAM_ID</string>"
-  echo "  <key>uploadSymbols</key><true/>"
-  echo "  <key>testFlightInternalTestingOnly</key><$INTERNAL/>"
-  if [[ $SIGNING == manual ]]; then
-    echo "  <key>signingStyle</key><string>manual</string>"
-    echo "  <key>signingCertificate</key><string>$CERT</string>"
-    echo "  <key>provisioningProfiles</key><dict>"
-    for b name in ${(kv)PROFILES}; do echo "    <key>$b</key><string>$name</string>"; done
-    echo "  </dict>"
-  else
-    echo "  <key>signingStyle</key><string>automatic</string>"
-    echo "  <key>manageAppVersionAndBuildNumber</key><true/>"
-  fi
-  echo '</dict></plist>'
-} > $WORK/ExportOptions.plist
+if [[ $SIGNING == manual && $INTERNAL == true ]]; then
+  echo "::warning::internal-only can't be set when uploading with altool (manual signing); the build is uploaded normally"
+fi
+# Every bundle actually inside the archive (app, extensions, watch app, App Clip…) needs a profile for export.
+python3 - $ARCHIVE $WORK/ExportOptions.plist $DEST $TEAM_ID $INTERNAL $SIGNING "${CERT:-}" "${(@kv)PROFILES}" <<'PY' || exit 1
+import os,plistlib,sys
+arch,out,dest,team,internal,signing,cert=sys.argv[1:8]
+profiles=dict(zip(sys.argv[8::2],sys.argv[9::2]))
+opts={'method':'app-store-connect','destination':dest,'teamID':team,'uploadSymbols':True,
+      'testFlightInternalTestingOnly':internal=='true'}
+if signing=='manual':
+    bundles=[]
+    for root,dirs,files in os.walk(os.path.join(arch,'Products','Applications')):
+        for d in dirs:
+            if d.endswith(('.app','.appex')):
+                info=os.path.join(root,d,'Info.plist')
+                if os.path.isfile(info): bundles.append(plistlib.load(open(info,'rb'))['CFBundleIdentifier'])
+    missing=[b for b in bundles if b not in profiles]
+    if missing:
+        print(f"::error::No App Store profile installed for: {', '.join(missing)} (ci-signing-setup.sh profile …)"); sys.exit(1)
+    opts.update(signingStyle='manual',signingCertificate=cert,provisioningProfiles={b:profiles[b] for b in bundles})
+    print('  bundles in archive:',', '.join(bundles))
+else:
+    opts.update(signingStyle='automatic',manageAppVersionAndBuildNumber=True)
+plistlib.dump(opts,open(out,'wb'))
+PY
 
 step "Export (destination=$DEST, signing=$SIGNING)"
 if [[ $SIGNING == manual ]]; then
@@ -125,8 +126,10 @@ def ents(app):
     return plistlib.loads(out) if out.strip() else {}
 arch,ipa=sys.argv[1],sys.argv[2]
 ok=True
-for a in glob.glob(arch+'/Products/Applications/*.app')+glob.glob(arch+'/Products/Applications/*.app/PlugIns/*.appex'):
-    rel=a.split('/Products/Applications/')[1]; x=os.path.join(ipa,'Payload',rel)
+base=os.path.join(arch,'Products','Applications')
+bundles=[os.path.join(r,d) for r,ds,_ in os.walk(base) for d in ds if d.endswith(('.app','.appex'))]
+for a in bundles:
+    rel=os.path.relpath(a,base); x=os.path.join(ipa,'Payload',rel)
     ea,ex=ents(a),ents(x)
     lost=sorted(set(ea)-set(ex)-{'get-task-allow'})
     bad=[]
