@@ -49,8 +49,9 @@ if [[ $SIGNING == manual ]]; then
     parts=(${(s: :)line})
     case $parts[1] in
       IDENTITY) CERT=$parts[2]; echo "  identity: ${parts[3,-1]} ($CERT)" ;;
-      PROFILE)  PROFILES[$parts[2]]="${parts[4,-1]}"; PROFILE_ARGS+=("CI_PROFILE_$parts[3]=${parts[4,-1]}")
-                echo "  $parts[2] → ${parts[4,-1]}" ;;
+      # Profiles are referenced by UUID: names aren't unique (old and renewed profiles share one).
+      PROFILE)  PROFILES[$parts[2]]=$parts[4]; PROFILE_ARGS+=("CI_PROFILE_$parts[3]=$parts[4]")
+                echo "  $parts[2] → ${parts[5,-1]} ($parts[4])" ;;
     esac
   done
   endstep
@@ -96,7 +97,8 @@ if signing=='manual':
                 if os.path.isfile(info): bundles.append(plistlib.load(open(info,'rb'))['CFBundleIdentifier'])
     missing=[b for b in bundles if b not in profiles]
     if missing:
-        print(f"::error::No App Store profile installed for: {', '.join(missing)} (ci-signing-setup.sh profile …)"); sys.exit(1)
+        print(f"::error::No App Store profile for: {', '.join(missing)}. Install one per bundle ID with ci-signing-setup.sh profile … "
+              "(it must use the same Distribution certificate as the others; wildcard profiles are ignored — see the warnings above)"); sys.exit(1)
     opts.update(signingStyle='manual',signingCertificate=cert,provisioningProfiles={b:profiles[b] for b in bundles})
     print('  bundles in archive:',', '.join(bundles))
 else:

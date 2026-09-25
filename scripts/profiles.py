@@ -4,7 +4,7 @@
   profiles.py list [--team T]                       App Store profiles usable for manual signing
   profiles.py match --team T BUNDLE [BUNDLE ...]    print "bundle<TAB>profile name<TAB>cert sha1" per bundle; exit 1 if any is missing
   profiles.py plan --team T                         pick ONE signing identity and print "IDENTITY <sha1>" then
-                                                    "PROFILE <bundle id> <build-setting key> <profile name>" for every
+                                                    "PROFILE <bundle id> <build-setting key> <UUID> <name>" for every
                                                     exact-bundle App Store profile that uses it (all targets, no scheme needed)
   profiles.py install FILE.mobileprovision ...      copy into Xcode's profile folders (by UUID) after checking them
 """
@@ -67,7 +67,11 @@ def c99(s):
 def cmd_plan(args):
     team = args[args.index('--team') + 1]
     ids = keychain_identities()
-    profs = [p for p in usable(team) if not p['_appid'].endswith('*')]
+    allp = usable(team)
+    for p in allp:
+        if p['_appid'].endswith('*'):
+            print(f'::warning::Wildcard profile "{p["Name"]}" ({p["_appid"]}) is ignored — manual signing needs one profile per bundle ID', file=sys.stderr)
+    profs = [p for p in allp if not p['_appid'].endswith('*')]
     # One identity for the whole archive: the keychain certificate referenced by the most profiles
     # (during a certificate rotation, profiles may point at different certificates).
     counts = {}
@@ -84,6 +88,8 @@ def cmd_plan(args):
     best = {}
     for p in profs:
         if cert not in p['_certs']:
+            print(f'::warning::Profile "{p["Name"]}" ({p["_appid"]}) is skipped: it uses a different Distribution certificate '
+                  f'than {ids[cert]}', file=sys.stderr)
             continue
         b = p['_appid'].split('.', 1)[1]
         if b not in best or p['ExpirationDate'] > best[b]['ExpirationDate']:
@@ -92,7 +98,7 @@ def cmd_plan(args):
         days = (p['ExpirationDate'] - utcnow()).days
         if days < 30:
             print(f'::warning::Profile "{p["Name"]}" for {b} expires in {days} days', file=sys.stderr)
-        print(f'PROFILE {b} {c99(b)} {p["Name"]}')
+        print(f'PROFILE {b} {c99(b)} {p["UUID"]} {p["Name"]}')
 
 
 def cmd_list(args):

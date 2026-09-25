@@ -55,12 +55,15 @@ p12)
   security import $p12 -k $KC -P "$p12pass" -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productbuild
   # Without this, codesign stops at a (headless, invisible) permission prompt until the job times out.
   security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pass" $KC >/dev/null
-  # A Distribution identity is only "valid" when its Apple WWDR intermediate is available; add the current ones.
-  if ! security find-identity -v -p codesigning $KC | grep -q 'Distribution'; then
-    for ca in AppleWWDRCAG3 AppleWWDRCAG6; do
-      curl -fsSL -o /tmp/$ca.cer https://www.apple.com/certificateauthority/$ca.cer && security import /tmp/$ca.cer -k $KC >/dev/null 2>&1 || true
-      rm -f /tmp/$ca.cer
+  # An identity is only "valid" when its Apple WWDR intermediate is available. Check the certificate we just
+  # imported (by SHA-1 — another team's identity may already be valid) and add the intermediates if needed.
+  sha=$(openssl pkcs12 -in $p12 -passin "pass:$p12pass" -nokeys -clcerts -legacy 2>/dev/null | openssl x509 -noout -fingerprint -sha1 2>/dev/null | sed 's/.*=//; s/://g')
+  if [[ -z $sha ]] || ! security find-identity -v -p codesigning $KC | grep -q "$sha"; then
+    tmp=$(mktemp -d)
+    for ca in AppleWWDRCAG3 AppleWWDRCAG4 AppleWWDRCAG5 AppleWWDRCAG6; do
+      curl -fsSL -o $tmp/$ca.cer https://www.apple.com/certificateauthority/$ca.cer && security import $tmp/$ca.cer -k $KC >/dev/null 2>&1 || true
     done
+    rm -rf $tmp
   fi
   echo "Identities in ci.keychain:"; security find-identity -v -p codesigning $KC
   ;;
