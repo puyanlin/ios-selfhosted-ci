@@ -12,6 +12,7 @@
 #   --no-test        PR check only builds (the default runs unit tests; UI tests are always skipped)
 #   --skip-testing "Target/Suite ..."  extra tests to skip in the PR check
 #   --no-ruleset     don't create the "PR check must pass" ruleset (e.g. the default branch doesn't build yet)
+#   --team TEAMID     Apple Developer Team ID of this app when it isn't TEAM_ID from the config (e.g. a company team)
 #   --signing manual  TestFlight signs with your own Apple Distribution identity + App Store profiles
 #                     (company teams without an Admin key; see ci-signing-setup.sh p12 / profile / appleid)
 #   --no-testflight  skip the TestFlight workflow (e.g. the app belongs to an App Store Connect team you can't sign for)
@@ -30,6 +31,7 @@ while (( $# )); do
     --branch) branches+=$2; shift 2 ;;
     --no-testflight) workflows=(${workflows:#testflight}); shift ;;
     --signing) signing=$2; shift 2 ;;
+    --team) TEAM_ID=$2; shift 2 ;;
     --no-ruleset) want_ruleset=0; shift ;;
     --no-test) no_test=1; shift ;;
     --skip-testing) skip_testing=$2; shift 2 ;;

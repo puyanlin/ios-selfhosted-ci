@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Inspect installed provisioning profiles for manual (non-cloud) signing.
 
-  profiles.py list [--team T]                       App Store profiles usable for manual signing
+  profiles.py list [--team T]                       App Store profiles usable for manual signing, with their file paths
+                                                    (also works on a Mac without ci.keychain — to find the files to copy)
   profiles.py match --team T BUNDLE [BUNDLE ...]    print "bundle<TAB>profile name<TAB>cert sha1" per bundle; exit 1 if any is missing
   profiles.py plan --team T                         pick ONE signing identity and print "IDENTITY <sha1>" then
                                                     "PROFILE <bundle id> <build-setting key> <UUID> <name>" for every
@@ -32,6 +33,8 @@ def load(path):
 
 
 def keychain_identities():
+    if not os.path.exists(KEYCHAIN):
+        return {}
     out = subprocess.run(['security', 'find-identity', '-v', '-p', 'codesigning', KEYCHAIN], capture_output=True, text=True).stdout
     return {line.split()[1]: line.split('"')[1] for line in out.splitlines() if '"' in line}
 
@@ -107,7 +110,7 @@ def cmd_list(args):
     for p in sorted(usable(team), key=lambda p: p['_appid']):
         cert = next((c for c in p['_certs'] if c in ids), None)
         days = (p['ExpirationDate'] - utcnow()).days
-        print(f"{p['_appid']:50} {p['Name']:40} expires in {days:3}d  cert {'✓ ' + ids[cert] if cert else '✗ not in ci.keychain'}")
+        print(f"{p['_appid']:50} {p['Name']:40} expires in {days:3}d  cert {'✓ ' + ids[cert] if cert else '✗ not in ci.keychain'}\n    {p['_path']}")
 
 
 def cmd_match(args):

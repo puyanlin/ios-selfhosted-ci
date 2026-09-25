@@ -29,9 +29,15 @@ keychain)
   security unlock-keychain -p "$pass" $KC
   tmp=$(mktemp -d -t ci-identity); p12=$tmp/identity.p12; p12pass=$(openssl rand -hex 16)
   trap 'rm -rf $tmp' EXIT
-  security export -k $HOME/Library/Keychains/login.keychain-db -t identities -f pkcs12 -P "$p12pass" -o $p12
-  security import $p12 -k $KC -P "$p12pass" -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productbuild
-  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pass" $KC >/dev/null
+  # Copy the login keychain's signing identities, if it has any (a dedicated CI user may have none — then
+  # import a Distribution identity with the p12 command instead).
+  if security find-identity -p codesigning $HOME/Library/Keychains/login.keychain-db | grep -q '"'; then
+    security export -k $HOME/Library/Keychains/login.keychain-db -t identities -f pkcs12 -P "$p12pass" -o $p12
+    security import $p12 -k $KC -P "$p12pass" -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productbuild
+    security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pass" $KC >/dev/null
+  else
+    echo "No signing identities in the login keychain — skipped copying (use: $0 p12 <file.p12>)."
+  fi
   # Add to the user keychain search list (xcodebuild looks up identities there); login stays first.
   current=(${(f)"$(security list-keychains -d user | tr -d ' "')"})
   (( ${current[(I)$KC]} )) || security list-keychains -d user -s $current $KC
@@ -44,7 +50,6 @@ asc)
   cp $p8 $DIR/private_keys/AuthKey_$id.p8 && chmod 600 $DIR/private_keys/AuthKey_$id.p8
   env=$DIR/ci${team:+-$team}.env
   printf 'ASC_KEY_ID=%s\nASC_ISSUER_ID=%s\n' $id $issuer > $env && chmod 600 $env
-  [[ -f $DIR/ci.env ]] || cp $env $DIR/ci.env
   echo "API key $id installed ($env). Move the downloaded $p8 into your password manager and delete it."
   ;;
 p12)
@@ -55,10 +60,11 @@ p12)
   security import $p12 -k $KC -P "$p12pass" -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productbuild
   # Without this, codesign stops at a (headless, invisible) permission prompt until the job times out.
   security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pass" $KC >/dev/null
-  # An identity is only "valid" when its Apple WWDR intermediate is available. Check the certificate we just
-  # imported (by SHA-1 — another team's identity may already be valid) and add the intermediates if needed.
-  sha=$(openssl pkcs12 -in $p12 -passin "pass:$p12pass" -nokeys -clcerts -legacy 2>/dev/null | openssl x509 -noout -fingerprint -sha1 2>/dev/null | sed 's/.*=//; s/://g')
-  if [[ -z $sha ]] || ! security find-identity -v -p codesigning $KC | grep -q "$sha"; then
+  # An identity is only "valid" when its Apple WWDR intermediate is available. Compare the keychain's identities
+  # (all vs valid) to see whether any is not valid yet, and add the intermediates if so.
+  all=$(security find-identity -p codesigning $KC | grep -c '"' || true)
+  valid=$(security find-identity -v -p codesigning $KC | grep -c '"' || true)
+  if (( all > valid )); then
     tmp=$(mktemp -d)
     for ca in AppleWWDRCAG3 AppleWWDRCAG4 AppleWWDRCAG5 AppleWWDRCAG6; do
       curl -fsSL -o $tmp/$ca.cer https://www.apple.com/certificateauthority/$ca.cer && security import $tmp/$ca.cer -k $KC >/dev/null 2>&1 || true
