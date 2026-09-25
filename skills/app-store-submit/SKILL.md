@@ -11,9 +11,12 @@ Tool: `scripts/asc-release.py` from ios-selfhosted-ci (API key in `~/.appstoreco
    `asc-release.py status --bundle-id <id> --version <v>` and show the user the versions and the processed builds.
 2. **Pick the build**: the one the user tested (ask if unclear); default = newest VALID build of that version.
    If it is still processing, use `--wait-build 30`.
-3. **What's New** for every locale the app has: reuse what App Store Connect already has, or draft it from
-   `git log <previous release tag or version bump>..HEAD` — user-facing changes only, short bullet points, one
-   file per locale under `fastlane/metadata/<locale>/release_notes.txt` or `--whats-new <locale>=…`.
+3. **Locales + What's New**: `status` lists the locales the version has (a new version inherits the previous
+   version's). Ask the user which locales to fill — default: all existing ones (`--locales a,b`). Unselected
+   locales with empty text must be filled or removed with `--drop-unlisted` (this deletes their description —
+   confirm first). Adding a locale also needs `description.txt` and `keywords.txt` in `<notes-dir>/<locale>/`.
+   Reuse text App Store Connect already has, or draft it from `git log <previous release>..HEAD` — user-facing
+   changes only, short bullets, one per locale, in `fastlane/metadata/<locale>/release_notes.txt` or `--whats-new <locale>=…`.
 4. **Release settings**: release after approval or manually, phased release on/off, review notes. Ask if unknown.
 5. **Dry run** with all the chosen flags and `--dry-run`. Fix anything it reports (missing locale text,
    no export-compliance answer, no processed build).

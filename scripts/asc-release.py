@@ -9,6 +9,10 @@ submit options:
   --wait-build MIN        wait up to MIN minutes for the build to finish processing (default 0)
   --notes-dir DIR         read "What's New" from DIR/<locale>/release_notes.txt (fastlane deliver layout)
   --whats-new LOCALE=TEXT  set "What's New" for one locale (repeatable; wins over --notes-dir)
+  --locales a,b,c         locales to fill (default: every locale the version already has — new versions
+                          inherit the previous version's locales). A locale not on the version yet is added;
+                          it then also needs description.txt and keywords.txt in --notes-dir/<locale>/
+  --drop-unlisted         remove the version's locales that are not in --locales (deletes their description too)
   --release after-approval|manual   (default: keep current)
   --phased / --no-phased  7-day phased release on/off (default: keep current)
   --review-notes TEXT     notes for App Review
@@ -64,15 +68,25 @@ def find_build(app, version, number):
     return [b for b in call('GET', q)['data'] if not b['attributes']['expired']]
 
 
+def localizations(vid):
+    return call('GET', f'/v1/appStoreVersions/{vid}/appStoreVersionLocalizations?limit=50'
+                       '&fields[appStoreVersionLocalizations]=locale,whatsNew,description,keywords')['data']
+
+
 def cmd_status(a):
     app, name = find_app(a.bundle_id)
     print(f'{name} ({a.bundle_id}) app id {app}')
-    for v in versions(app):
+    versions_list = versions(app)
+    for v in versions_list:
         at = v['attributes']
         if a.version and at['versionString'] != a.version:
             continue
         b = call('GET', f"/v1/appStoreVersions/{v['id']}/build?fields[builds]=version").get('data')
         print(f"  {at['versionString']:10} {at['appStoreState']:26} release={at['releaseType']:15} build={b['attributes']['version'] if b else '-'}")
+        if a.version or v is versions_list[0]:
+            for l in localizations(v['id']):
+                wn = (l['attributes']['whatsNew'] or '').strip()
+                print(f"      {l['attributes']['locale']:8} What's New: {('✓ ' + wn.splitlines()[0][:50]) if wn else '(empty)'}")
     if a.version:
         for b in find_build(app, a.version, None)[:5]:
             at = b['attributes']
@@ -138,24 +152,60 @@ def cmd_submit(a):
     for kv in a.whats_new or []:
         loc, _, text = kv.partition('=')
         notes[loc] = text.strip().replace('\\n', '\n')
-    locs = call('GET', f'/v1/appStoreVersions/{vid}/appStoreVersionLocalizations?fields[appStoreVersionLocalizations]=locale,whatsNew')['data'] if vid != 'NEW' else []
+    locs = localizations(vid) if vid != 'NEW' else []
+    if vid == 'NEW':  # a new version inherits the latest version's locales
+        prev = next((x for x in vs if x['id'] != vid), None)
+        locs_for_plan = [l['attributes']['locale'] for l in localizations(prev['id'])] if prev else []
+    else:
+        locs_for_plan = [l['attributes']['locale'] for l in locs]
+    wanted = [x.strip() for x in a.locales.split(',')] if a.locales else locs_for_plan
+    step(f"Locales on the version: {', '.join(locs_for_plan) or '(none)'}; filling: {', '.join(wanted)}")
     first_release = not any(x['attributes']['appStoreState'] == 'READY_FOR_SALE' or x['attributes']['appStoreState'].startswith('REPLACED') for x in vs)
     missing = []
-    for l in locs:
-        loc, current = l['attributes']['locale'], (l['attributes']['whatsNew'] or '').strip()
-        if loc in notes and notes[loc] != current:
-            step(f"What's New [{loc}]: updating ({len(notes[loc])} chars)")
-            write('PATCH', f"/v1/appStoreVersionLocalizations/{l['id']}", {'data': {'type': 'appStoreVersionLocalizations',
-                  'id': l['id'], 'attributes': {'whatsNew': notes[loc]}}}, f"set What's New [{loc}]")
-        elif current or loc in notes:
-            step(f"What's New [{loc}]: ok")
-        elif not first_release:
-            missing.append(loc)
-    for loc in set(notes) - {l['attributes']['locale'] for l in locs}:
-        step(f"⚠️ {loc} has notes but the app has no {loc} localization — skipped")
+    by_loc = {l['attributes']['locale']: l for l in locs}
+    for loc in wanted:
+        text = notes.get(loc)
+        if loc in by_loc:
+            current = (by_loc[loc]['attributes']['whatsNew'] or '').strip()
+            if text and text != current:
+                step(f"What's New [{loc}]: updating ({len(text)} chars)")
+                write('PATCH', f"/v1/appStoreVersionLocalizations/{by_loc[loc]['id']}", {'data': {'type': 'appStoreVersionLocalizations',
+                      'id': by_loc[loc]['id'], 'attributes': {'whatsNew': text}}}, f"set What's New [{loc}]")
+            elif current or text:
+                step(f"What's New [{loc}]: ok (keeping the existing text)")
+            elif not first_release:
+                missing.append(loc)
+        elif vid == 'NEW' and loc in locs_for_plan:
+            if text:
+                step(f"What's New [{loc}]: will be set on the new version")
+            elif not first_release:
+                missing.append(loc)
+        else:  # a locale the version doesn't have yet
+            d = os.path.join(a.notes_dir or '', loc)
+            desc = os.path.join(d, 'description.txt'); kw = os.path.join(d, 'keywords.txt')
+            if not (a.notes_dir and os.path.isfile(desc) and os.path.isfile(kw)):
+                fail(f"Adding {loc} needs its description and keywords too: put description.txt and keywords.txt "
+                     f"(and release_notes.txt) in {a.notes_dir or '<notes-dir>'}/{loc}/. The app name for {loc} is set on the website (App Information).")
+            attrs = {'locale': loc, 'description': open(desc, encoding='utf-8').read().strip(),
+                     'keywords': open(kw, encoding='utf-8').read().strip()}
+            if text:
+                attrs['whatsNew'] = text
+            step(f'Adding locale {loc}')
+            write('POST', '/v1/appStoreVersionLocalizations', {'data': {'type': 'appStoreVersionLocalizations', 'attributes': attrs,
+                  'relationships': {'appStoreVersion': rel('appStoreVersions', vid)}}}, f'add locale {loc}')
+    for loc in [x for x in locs_for_plan if x not in wanted]:
+        if a.drop_unlisted:
+            step(f'Removing locale {loc} from this version')
+            if loc in by_loc:
+                write('DELETE', f"/v1/appStoreVersionLocalizations/{by_loc[loc]['id']}", what=f'remove locale {loc}')
+        elif not first_release and not ((by_loc.get(loc) or {}).get('attributes', {}).get('whatsNew') or '').strip():
+            fail(f"{loc} is on the version but not in --locales and its What's New is empty. Fill it too, or pass --drop-unlisted to remove {loc} from this version.")
+        else:
+            step(f"What's New [{loc}]: not selected, keeping as is")
+    for loc in set(notes) - set(wanted):
+        step(f"⚠️ notes for {loc} ignored (not in --locales)")
     if missing:
         fail(f"What's New is empty for: {', '.join(missing)} (use --whats-new {missing[0]}=… or {a.notes_dir or 'fastlane/metadata'}/<locale>/release_notes.txt)")
-
     # 4. Release type, phased release, review notes.
     if a.release:
         rt = {'after-approval': 'AFTER_APPROVAL', 'manual': 'MANUAL'}[a.release]
@@ -223,6 +273,7 @@ def main():
     g = m.add_mutually_exclusive_group(); g.add_argument('--phased', dest='phased', action='store_true', default=None)
     g.add_argument('--no-phased', dest='phased', action='store_false')
     m.add_argument('--review-notes'); m.add_argument('--dry-run', action='store_true')
+    m.add_argument('--locales'); m.add_argument('--drop-unlisted', action='store_true')
     a = p.parse_args()
     (cmd_status if a.cmd == 'status' else cmd_submit)(a)
 
