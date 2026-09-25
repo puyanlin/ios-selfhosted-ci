@@ -21,6 +21,9 @@ inputs:
   internal-only:
     description: "'true' marks the build as TestFlight internal testing only"
     default: 'false'
+  signing:
+    description: "'cloud' (default; Xcode cloud signing, needs an Admin API key) or 'manual' (your Apple Distribution identity + App Store profiles; App Manager key or Apple ID)"
+    default: cloud
   xcode:
     description: Xcode path or version (27.1, 27); empty = the repo's .xcode-version, else the runner default
     default: ''
@@ -43,6 +46,7 @@ runs:
         INTERNAL_ONLY: ${{ inputs.internal-only }}
         TEAM_ID: ${{ inputs.team-id }}
         XCODE_APP: ${{ inputs.xcode }}
+        SIGNING_STYLE: ${{ inputs.signing }}
       run: ${{ github.action_path }}/testflight.sh
     - if: failure()
       uses: actions/upload-artifact@v4
