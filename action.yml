@@ -1,5 +1,9 @@
-name: iOS self-hosted TestFlight
-description: Archive, sign (Xcode cloud signing + App Store Connect API key) and upload to TestFlight on a self-hosted Mac.
+name: iOS Self-Hosted TestFlight
+description: Archive, sign (Xcode cloud signing or your own Distribution identity) and upload any branch to TestFlight from your own Mac runner.
+author: puyanlin
+branding:
+  icon: upload-cloud
+  color: blue
 inputs:
   scheme:
     description: Scheme to archive. Several candidates may be given (space separated); the first one the branch has is used.
