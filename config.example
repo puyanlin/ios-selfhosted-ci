@@ -6,6 +6,7 @@ CI_REF=v1                              # tag/branch/SHA of CI_REPO that app repo
 XCODE_APP=/Applications/Xcode.app
 
 # Optional
+LANGUAGE="en"                           # language the agent skills talk to you in: en, zh-TW (empty = follow your messages)
 XCODE_BETA_APP=""                      # e.g. "/Applications/Xcode-beta.app" — offered in the TestFlight Xcode menu
 REVIEW_LANGUAGE="English"              # language of Claude review comments
 COMMIT_TRAILER=""                      # appended to commit messages the scripts create (e.g. a Co-Authored-By line)

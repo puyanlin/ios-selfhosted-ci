@@ -129,7 +129,7 @@ scripts/asc-release.py submit --bundle-id com.example.app --version 1.4.0 \
 
 It creates (or reuses) the version, waits for the build to finish processing (`--wait-build 30`), attaches it, fills "What's New" per locale, sets release type / phased release / review notes, checks nothing is missing, and submits — also after a rejection. `--dry-run` prints every step and changes nothing.
 
-Using an AI agent? [`skills/app-store-submit/SKILL.md`](skills/app-store-submit/SKILL.md) is a Claude Code skill that drafts the release notes from git history, shows you the plan, and only submits after you confirm.
+Using an AI agent? [`skills/app-store-submit/SKILL.md`](skills/app-store-submit/SKILL.md) is a Claude Code skill that lets you pick the locales, drafts the release notes from git history, shows you the plan, and only submits after you confirm. It talks to you in English or Traditional Chinese (`LANGUAGE` in the config). Install: `ln -s ~/ios-selfhosted-ci/skills/app-store-submit ~/.claude/skills/app-store-submit`.
 
 ## Choosing the Xcode version
 
