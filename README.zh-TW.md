@@ -7,7 +7,7 @@
 | 層 | 工具 |
 |---|---|
 | runner、PR check＋test、任意分支上 TestFlight、簽章、一鍵設定 repo | **本專案** |
-| AI PR review | [claude-code-action](https://github.com/anthropics/claude-code-action)，由本專案讓它跑在你的 Mac |
+| AI PR review | 預設 [claude-code-action](https://github.com/anthropics/claude-code-action) 跑在你的 Mac；也可換成 [Codex](https://github.com/openai/codex-action)／[Gemini](https://github.com/google-github-actions/run-gemini-cli) |
 | 送審、上架資料、TestFlight 群組、審核狀態 | [asc](https://asccli.sh) |
 | 行銷截圖 | [app-store-screenshots](https://github.com/ParthJadhav/app-store-screenshots) → `asc screenshots upload` |
 
@@ -171,6 +171,22 @@ asc review status --app APP_ID
 
 只需要 API 金鑰，不用 Apple ID 密碼（`asc web auth login` 是選用的，只給 Apple 沒開放 API 的額外檢查用）。
 行銷截圖用 [app-store-screenshots](https://github.com/ParthJadhav/app-store-screenshots) 設計，再用 `asc screenshots upload` 上傳。
+
+## AI review：換提供者
+
+每個 repo 的 `.github/workflows/ai-review.yml` 用 `provider:` 選提供者。review 的指示（`review/prompt.md`）是共用的，
+換提供者不會改變審查的標準。
+
+| `provider` | 跑在哪裡 | app repo 要設的 secret | 留言方式 |
+|---|---|---|---|
+| `claude`（預設） | 你 Mac 上的 `claude-review` runner（用你的 Claude 訂閱） | `CLAUDE_CODE_OAUTH_TOKEN`（`scripts/set-claude-token.sh`） | inline comment＋總結 |
+| `codex` | GitHub 代管的 Linux | `OPENAI_API_KEY` | 一則總結留言 |
+| `gemini` | GitHub 代管的 Linux | `GEMINI_API_KEY` | 一則總結留言 |
+
+新 repo 的預設值用設定檔的 `REVIEW_PROVIDER`，或 `bootstrap-repo.sh MyApp --review-provider codex`。
+Codex 和 Gemini 刻意跑在用完即丟的 GitHub 代管機器：它們只是呼叫雲端 API；而且 Codex 預設的沙箱會在重複使用的機器上
+**永久拿掉 runner 帳號的 sudo 權限**。真的要在你的 Mac 上跑，加 `runner: '["self-hosted","claude-review"]'`（Codex 會改用
+`safety-strategy: unsafe`＋唯讀沙箱，runner 也要裝 Node.js）。Codex 和 Gemini 這兩條路徑是新加的，實戰經驗比 Claude 少。
 
 ## 指定 Xcode 版本
 

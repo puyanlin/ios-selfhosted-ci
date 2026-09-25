@@ -1,0 +1,17 @@
+# The pipeline (provider, model, prompt) lives in __CI_REPO__; this file only triggers it.
+# provider: claude (default, secret CLAUDE_CODE_OAUTH_TOKEN) | codex (OPENAI_API_KEY) | gemini (GEMINI_API_KEY)
+name: AI review
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+jobs:
+  review:
+    uses: __CI_REPO__/.github/workflows/ai-review.yml@__CI_REF__
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    secrets: inherit
+    with:
+      provider: __PROVIDER__
+__REVIEW_WITH__

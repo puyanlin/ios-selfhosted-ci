@@ -8,5 +8,6 @@ XCODE_APP=/Applications/Xcode.app
 # Optional
 LANGUAGE="en"                           # language the agent skills talk to you in: en, zh-TW (empty = follow your messages)
 XCODE_BETA_APP=""                      # e.g. "/Applications/Xcode-beta.app" — offered in the TestFlight Xcode menu
-REVIEW_LANGUAGE="English"              # language of Claude review comments
+REVIEW_LANGUAGE="English"              # language of AI review comments
+REVIEW_PROVIDER="claude"               # AI review: claude | codex | gemini
 COMMIT_TRAILER=""                      # appended to commit messages the scripts create (e.g. a Co-Authored-By line)

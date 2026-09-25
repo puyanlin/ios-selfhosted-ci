@@ -5,6 +5,7 @@
 #
 # Usage: bootstrap-repo.sh <repo> [--scheme "A B"] [--project path/X.xcodeproj] [--destination device]
 #                                 [--branch other-long-lived-branch]... [--review-language "Traditional Chinese"]
+#                                 [--review-provider claude|codex|gemini]
 #   --scheme       auto-detected when omitted; several space-separated candidates = each branch uses the one it has
 #   --project      only needed when the project is not at the repo root
 #   --destination  device = PR check builds for device (unsigned); use when an SDK lacks an arm64 simulator slice
@@ -21,13 +22,14 @@ source ${0:A:h}/_config.sh
 TEMPLATES=${0:A:h}/../templates
 
 repo=${1:?usage: bootstrap-repo.sh <repo> [options]}; shift
-scheme=""; project=""; destination=""; language=$REVIEW_LANGUAGE; branches=(); workflows=(pr-check testflight claude-review); want_ruleset=1; no_test=0; skip_testing=""; signing=""
+scheme=""; project=""; destination=""; language=$REVIEW_LANGUAGE; branches=(); workflows=(pr-check testflight ai-review); provider=$REVIEW_PROVIDER; want_ruleset=1; no_test=0; skip_testing=""; signing=""
 while (( $# )); do
   case $1 in
     --scheme) scheme=$2; shift 2 ;;
     --project) project=$2; shift 2 ;;
     --destination) destination=$2; shift 2 ;;
     --review-language) language=$2; shift 2 ;;
+    --review-provider) provider=$2; shift 2 ;;
     --branch) branches+=$2; shift 2 ;;
     --no-testflight) workflows=(${workflows:#testflight}); shift ;;
     --signing) signing=$2; shift 2 ;;
@@ -84,17 +86,18 @@ render() {  # render <template>
   [[ $1 == testflight && -n $signing ]] && with+="      signing: $signing"$'\n'
   (( no_test )) && [[ $1 == pr-check ]] && with+="      test: false"$'\n'
   [[ $1 == pr-check && -n $skip_testing ]] && with+="      skip-testing: $skip_testing"$'\n'
-  if [[ $1 == claude-review ]]; then
-    local c=$(command -v claude || true) b=$(command -v bun || true)
-    [[ -n $c || -n $b || -n $language ]] && review_with="    with:"$'\n'
-    [[ -n $c ]] && review_with+="      claude-path: $c"$'\n'
-    [[ -n $b ]] && review_with+="      bun-path: $b"$'\n'
+  if [[ $1 == ai-review ]]; then
+    if [[ $provider == claude ]]; then   # local installs only matter on the self-hosted claude-review runner
+      local c=$(command -v claude || true) b=$(command -v bun || true)
+      [[ -n $c ]] && review_with+="      claude-path: $c"$'\n'
+      [[ -n $b ]] && review_with+="      bun-path: $b"$'\n'
+    fi
     [[ -n $language ]] && review_with+="      language: $language"$'\n'
   fi
   local xcode_options="'$XCODE_APP'"; [[ -n $XCODE_BETA_APP ]] && xcode_options+=", '$XCODE_BETA_APP'"
   WITH=${with%$'\n'} REVIEW_WITH=${review_with%$'\n'} awk \
-    -v scheme="$scheme" -v ci_repo="$CI_REPO" -v ci_ref="$CI_REF" -v team="$TEAM_ID" -v xcode="$XCODE_APP" -v xcode_options="$xcode_options" '
-    { gsub(/__SCHEME__/, scheme); gsub(/__CI_REPO__/, ci_repo); gsub(/__CI_REF__/, ci_ref); gsub(/__TEAM_ID__/, team); gsub(/__XCODE_OPTIONS__/, xcode_options); gsub(/__XCODE_APP__/, xcode) }
+    -v provider="$provider" -v scheme="$scheme" -v ci_repo="$CI_REPO" -v ci_ref="$CI_REF" -v team="$TEAM_ID" -v xcode="$XCODE_APP" -v xcode_options="$xcode_options" '
+    { gsub(/__PROVIDER__/, provider); gsub(/__SCHEME__/, scheme); gsub(/__CI_REPO__/, ci_repo); gsub(/__CI_REF__/, ci_ref); gsub(/__TEAM_ID__/, team); gsub(/__XCODE_OPTIONS__/, xcode_options); gsub(/__XCODE_APP__/, xcode) }
     /^__WITH__$/ { if (ENVIRON["WITH"] != "") print ENVIRON["WITH"]; next }
     /^__REVIEW_WITH__$/ { if (ENVIRON["REVIEW_WITH"] != "") print ENVIRON["REVIEW_WITH"]; next }
     { print }' $TEMPLATES/$1.yml
@@ -116,9 +119,24 @@ for br in $all_branches; do
   done
 done
 
-say "Claude review token"
-if gh secret list -R $R | grep -q CLAUDE_CODE_OAUTH_TOKEN; then echo "  set"
-else echo "  ⚠️ missing: in your own terminal run \`claude setup-token\`, then \`scripts/set-claude-token.sh $repo\`"; fi
+# The AI review used to be claude-review.yml; drop it so a PR isn't reviewed twice.
+for br in $all_branches; do
+  if sha=$(gh api "repos/$R/contents/.github/workflows/claude-review.yml?ref=$br" -q .sha 2>/dev/null) && [[ -n $sha ]]; then
+    msg="ci: replace claude-review.yml with ai-review.yml"; [[ -n $COMMIT_TRAILER ]] && msg+=$'\n\n'"$COMMIT_TRAILER"
+    gh api -X DELETE "repos/$R/contents/.github/workflows/claude-review.yml" -f "message=$msg" -f branch=$br -f sha=$sha >/dev/null \
+      && echo "  $br: removed legacy claude-review.yml"
+  fi
+done
+
+say "AI review ($provider) secret"
+case $provider in
+  claude) secret=CLAUDE_CODE_OAUTH_TOKEN; how="in your own terminal run \`claude setup-token\`, then \`scripts/set-claude-token.sh $repo\`" ;;
+  codex)  secret=OPENAI_API_KEY;  how="gh secret set OPENAI_API_KEY -R $R   (paste the key when asked)" ;;
+  gemini) secret=GEMINI_API_KEY;  how="gh secret set GEMINI_API_KEY -R $R   (paste the key when asked)" ;;
+  *) echo "unknown --review-provider $provider (claude|codex|gemini)"; exit 1 ;;
+esac
+if gh secret list -R $R | grep -q "^$secret"; then echo "  $secret set"
+else echo "  ⚠️ $secret missing: $how"; fi
 
 say "Ruleset"
 if (( ! want_ruleset )); then echo "  skipped (--no-ruleset)"

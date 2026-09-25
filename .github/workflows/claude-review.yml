@@ -1,66 +1,30 @@
-# Reusable: Claude code review on pull requests (anthropics/claude-code-action).
-# Callers need `secrets: inherit` (CLAUDE_CODE_OAUTH_TOKEN) and permissions contents: read, pull-requests: write, id-token: write.
+# Kept for existing callers: same as ai-review.yml with provider: claude.
 name: Claude review
 on:
   workflow_call:
     inputs:
       model: { type: string, default: claude-opus-5-5 }
-      # Point these at the Claude Code / bun already installed on the runner; otherwise every job
-      # downloads and installs Claude Code again (slow home networks can stall for 20+ minutes).
       claude-path: { type: string, default: '' }
       bun-path: { type: string, default: '' }
       runner-label: { type: string, default: claude-review }
       language: { type: string, default: English }
-      show-full-output: { type: boolean, default: false, description: 'Print Claude output in the job log (debugging; PR content ends up in logs)' }
+      show-full-output: { type: boolean, default: false }
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: { required: true }
 jobs:
   review:
-    # Never review fork PRs on a self-hosted runner.
-    if: ${{ !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository }}
-    runs-on: [self-hosted, "${{ inputs.runner-label }}"]
+    uses: puyanlin/ios-selfhosted-ci/.github/workflows/ai-review.yml@v1
     permissions:
       contents: read
       pull-requests: write
       id-token: write
-    concurrency:
-      group: claude-review-${{ github.repository }}-${{ github.event.pull_request.number }}
-      cancel-in-progress: true
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-      - uses: anthropics/claude-code-action@v1
-        env:
-          # Run Claude Code with its own empty config dir: never load the runner user's ~/.claude
-          # (personal hooks, plugins, MCP servers, remote control) — they can hang a headless job —
-          # and keep CI transcripts out of the user's history.
-          CLAUDE_CONFIG_DIR: ${{ runner.temp }}/claude-config
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          path_to_claude_code_executable: ${{ inputs.claude-path }}
-          path_to_bun_executable: ${{ inputs.bun-path }}
-          show_full_output: ${{ inputs.show-full-output }}
-          prompt: |
-            REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
-
-            You are the code reviewer for this iOS app. Review the changes in this PR (use gh pr diff; read related files when needed).
-            Write every comment in ${{ inputs.language }}.
-
-            Only raise things that will actually cause problems, most severe first:
-            - bugs, crashes, logic errors, edge cases
-            - data loss or sync issues (CloudKit, SwiftData, Core Data, UserDefaults)
-            - threading/concurrency (MainActor, Task, async) and memory leaks
-            - privacy, permissions, App Store review risks
-            - layout or orientation problems on iPhone / iPad
-
-            Put each concrete issue as an inline comment on the line, with the scenario that triggers it and a suggested fix.
-            Finish with one `gh pr comment` summary: overall assessment + the issue list; if nothing is wrong, say so briefly.
-            Skip style nits (formatting, naming) and anything the PR check's compiler would catch.
-            Skip binaries and vendored SDKs (*.xcframework, *.framework, *.a, images, Pods/, vendored package sources); focus on the app's own code and config.
-          claude_args: |
-            --model ${{ inputs.model }}
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"
+    with:
+      provider: claude
+      model: ${{ inputs.model }}
+      language: ${{ inputs.language }}
+      claude-path: ${{ inputs.claude-path }}
+      bun-path: ${{ inputs.bun-path }}
+      runner: '["self-hosted","${{ inputs.runner-label }}"]'
+      show-full-output: ${{ inputs.show-full-output }}
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

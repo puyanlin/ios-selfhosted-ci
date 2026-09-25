@@ -7,7 +7,7 @@ This project is the **infrastructure** layer: self-hosted runners, reusable work
 | Layer | Tool |
 |---|---|
 | Runners, PR check + tests, any-branch TestFlight, signing, one-command repo setup | **this repo** |
-| AI PR review | [claude-code-action](https://github.com/anthropics/claude-code-action), run on your Mac by this repo |
+| AI PR review | [claude-code-action](https://github.com/anthropics/claude-code-action) on your Mac by default; or [Codex](https://github.com/openai/codex-action) / [Gemini](https://github.com/google-github-actions/run-gemini-cli) |
 | Submissions, metadata, TestFlight groups, review status | [asc](https://asccli.sh) |
 | Marketing screenshots | [app-store-screenshots](https://github.com/ParthJadhav/app-store-screenshots) → `asc screenshots upload` |
 
@@ -185,6 +185,23 @@ Only the API key is needed — no Apple ID password. (`asc web auth login` is op
 only on the website.) For marketing screenshots, [app-store-screenshots](https://github.com/ParthJadhav/app-store-screenshots)
 designs them and `asc screenshots upload` uploads them.
 
+## AI review: pick a provider
+
+Every repo's `.github/workflows/ai-review.yml` sets `provider:` — the review prompt (`review/prompt.md`) is shared,
+so switching providers doesn't change what gets reviewed.
+
+| `provider` | Runs on | Secret in the app repo | Posts |
+|---|---|---|---|
+| `claude` (default) | your Mac's `claude-review` runner (uses your Claude subscription) | `CLAUDE_CODE_OAUTH_TOKEN` (`scripts/set-claude-token.sh`) | inline comments + a summary |
+| `codex` | GitHub-hosted Linux | `OPENAI_API_KEY` | one summary comment |
+| `gemini` | GitHub-hosted Linux | `GEMINI_API_KEY` | one summary comment |
+
+Set the default for new repos with `REVIEW_PROVIDER` in the config, or `bootstrap-repo.sh MyApp --review-provider codex`.
+Codex and Gemini run on disposable GitHub-hosted runners on purpose: they only call a cloud API, and Codex's default
+sandboxing permanently revokes `sudo` from the runner's account on reused machines. To run them on your Mac anyway, pass
+`runner: '["self-hosted","claude-review"]'` (Codex then uses `safety-strategy: unsafe` with a read-only sandbox, and
+needs Node.js on the runner). The Codex and Gemini paths are new and less battle-tested than Claude.
+
 ## Choosing the Xcode version
 
 Every workflow resolves Xcode the same way (see `xcode.sh`):
@@ -212,7 +229,9 @@ Install several Xcodes side by side (e.g. with [xcodes](https://github.com/Xcode
 | | `build-number` | `YYMMDD01` | Numeric only |
 | | `fastlane-lane` | — | Run `bundle exec fastlane <lane>` instead |
 | | `signing` | `cloud` | `manual` = your Distribution identity + App Store profiles ([docs](docs/manual-signing.md)) |
-| claude-review | `model` | `claude-opus-5-5` | Any Claude model ID |
+| ai-review | `provider` | `claude` | `claude`, `codex` or `gemini` |
+| | `model` | provider default | e.g. `claude-opus-5-5` |
+| | `runner` | `auto` | Claude → your Mac; Codex/Gemini → GitHub-hosted |
 | | `claude-path`, `bun-path` | download each run | Point at local installs |
 | | `language` | `English` | Language of the review comments |
 | all | `runner-label` | `macos-xcode` / `claude-review` | |
