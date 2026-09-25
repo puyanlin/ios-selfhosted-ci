@@ -107,7 +107,8 @@ for br in $all_branches; do
     if [[ -n $sha && "$(gh api "repos/$R/contents/$fp?ref=$br" -H 'Accept: application/vnd.github.raw')" == "$(cat $tmp/$wf.yml)" ]]; then
       echo "  $br $wf: unchanged"; continue
     fi
-    args=(-f "message=ci: $wf workflow (ios-selfhosted-ci)${COMMIT_TRAILER:+$'\n\n'$COMMIT_TRAILER}" -f branch=$br -f "content=$(base64 -i $tmp/$wf.yml)")
+    msg="ci: $wf workflow (ios-selfhosted-ci)"; [[ -n $COMMIT_TRAILER ]] && msg+=$'\n\n'"$COMMIT_TRAILER"
+    args=(-f "message=$msg" -f branch=$br -f "content=$(base64 -i $tmp/$wf.yml)")
     [[ -n $sha ]] && args+=(-f sha=$sha)
     gh api -X PUT repos/$R/contents/$fp $args -q '.commit.sha[0:7]' | sed "s|^|  $br $wf: |"
   done
