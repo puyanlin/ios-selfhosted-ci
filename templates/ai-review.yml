@@ -1,5 +1,5 @@
 # The pipeline (provider, model, prompt) lives in __CI_REPO__; this file only triggers it.
-# provider: claude (default, secret CLAUDE_CODE_OAUTH_TOKEN) | codex (OPENAI_API_KEY) | gemini (GEMINI_API_KEY)
+# provider: claude (default) | codex | gemini — runs through that CLI on your Mac (see the README)
 name: AI review
 on:
   pull_request:

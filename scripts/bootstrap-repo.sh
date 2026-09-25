@@ -131,8 +131,8 @@ done
 say "AI review ($provider) secret"
 case $provider in
   claude) secret=CLAUDE_CODE_OAUTH_TOKEN; how="in your own terminal run \`claude setup-token\`, then \`scripts/set-claude-token.sh $repo\`" ;;
-  codex)  secret=OPENAI_API_KEY;  how="gh secret set OPENAI_API_KEY -R $R   (paste the key when asked)" ;;
-  gemini) secret=GEMINI_API_KEY;  how="gh secret set GEMINI_API_KEY -R $R   (paste the key when asked)" ;;
+  codex)  secret=OPENAI_API_KEY;  how="fine if the runner is signed in (codex login); otherwise gh secret set OPENAI_API_KEY -R $R" ;;
+  gemini) secret=GEMINI_API_KEY;  how="fine if the runner is signed in (run gemini once); otherwise gh secret set GEMINI_API_KEY -R $R" ;;
   *) echo "unknown --review-provider $provider (claude|codex|gemini)"; exit 1 ;;
 esac
 if gh secret list -R $R | grep -q "^$secret"; then echo "  $secret set"

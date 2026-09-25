@@ -7,7 +7,7 @@
 | 層 | 工具 |
 |---|---|
 | runner、PR check＋test、任意分支上 TestFlight、簽章、一鍵設定 repo | **本專案** |
-| AI PR review | 預設 [claude-code-action](https://github.com/anthropics/claude-code-action) 跑在你的 Mac；也可換成 [Codex](https://github.com/openai/codex-action)／[Gemini](https://github.com/google-github-actions/run-gemini-cli) |
+| AI PR review | Claude Code、Codex 或 Gemini 的 CLI 跑在你的 Mac（本專案），同一份指示、inline comment |
 | 送審、上架資料、TestFlight 群組、審核狀態 | [asc](https://asccli.sh) |
 | 行銷截圖 | [app-store-screenshots](https://github.com/ParthJadhav/app-store-screenshots) → `asc screenshots upload` |
 
@@ -174,19 +174,19 @@ asc review status --app APP_ID
 
 ## AI review：換提供者
 
-每個 repo 的 `.github/workflows/ai-review.yml` 用 `provider:` 選提供者。review 的指示（`review/prompt.md`）是共用的，
-換提供者不會改變審查的標準。
+每個 repo 的 `.github/workflows/ai-review.yml` 用 `provider:` 選提供者，**runner 的主人訂哪家就用哪家**。三家都用自己的 CLI
+**跑在你的 Mac 上**，共用同一份 review 指示（`review/prompt.md`）和輸出格式，留言方式也一樣：一個 PR review，問題會在對應的行留
+**inline comment**，再加一段總結。
 
-| `provider` | 跑在哪裡 | app repo 要設的 secret | 留言方式 |
-|---|---|---|---|
-| `claude`（預設） | 你 Mac 上的 `claude-review` runner（用你的 Claude 訂閱） | `CLAUDE_CODE_OAUTH_TOKEN`（`scripts/set-claude-token.sh`） | inline comment＋總結 |
-| `codex` | GitHub 代管的 Linux | `OPENAI_API_KEY` | 一則總結留言 |
-| `gemini` | GitHub 代管的 Linux | `GEMINI_API_KEY` | 一則總結留言 |
+| `provider` | runner 上的 CLI | 登入方式（擇一） |
+|---|---|---|
+| `claude`（預設） | `claude` | secret `CLAUDE_CODE_OAUTH_TOKEN`（`claude setup-token` → `scripts/set-claude-token.sh`） |
+| `codex` | `codex`（`npm i -g @openai/codex`） | 在 runner 上 `codex login`（ChatGPT 帳號），或 secret `OPENAI_API_KEY` |
+| `gemini` | `gemini`（`npm i -g @google/gemini-cli`） | 在 runner 上執行一次 `gemini` 登入 Google 帳號，或 secret `GEMINI_API_KEY` |
 
-新 repo 的預設值用設定檔的 `REVIEW_PROVIDER`，或 `bootstrap-repo.sh MyApp --review-provider codex`。
-Codex 和 Gemini 刻意跑在用完即丟的 GitHub 代管機器：它們只是呼叫雲端 API；而且 Codex 預設的沙箱會在重複使用的機器上
-**永久拿掉 runner 帳號的 sudo 權限**。真的要在你的 Mac 上跑，加 `runner: '["self-hosted","claude-review"]'`（Codex 會改用
-`safety-strategy: unsafe`＋唯讀沙箱，runner 也要裝 Node.js）。Codex 和 Gemini 這兩條路徑是新加的，實戰經驗比 Claude 少。
+每個 job 只把登入憑證複製到一個乾淨的暫存設定目錄，你自己的設定、外掛、MCP 都不會在 CI 裡載入。新 repo 的預設值用設定檔的
+`REVIEW_PROVIDER`，或 `bootstrap-repo.sh MyApp --review-provider codex`；模型用 `model:` 指定。也可以設
+`runner: '"ubuntu-latest"'` 跑在 GitHub 代管機器（會自動安裝 CLI，但一定要設 API 金鑰的 secret）。Codex 和 Gemini 在這裡的實戰經驗比 Claude 少。
 
 ## 指定 Xcode 版本
 
