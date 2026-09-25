@@ -50,6 +50,12 @@ asc)
   cp $p8 $DIR/private_keys/AuthKey_$id.p8 && chmod 600 $DIR/private_keys/AuthKey_$id.p8
   env=$DIR/ci${team:+-$team}.env
   printf 'ASC_KEY_ID=%s\nASC_ISSUER_ID=%s\n' $id $issuer > $env && chmod 600 $env
+  # Register the same key with the asc CLI (App Store Connect tasks), stored in ~/.asc/config.json because
+  # runner jobs can't read the login keychain.
+  if command -v asc >/dev/null; then
+    ASC_TELEMETRY_DISABLED=1 asc auth login --bypass-keychain --name "${team:-default}" \
+      --key-id $id --issuer-id $issuer --private-key $DIR/private_keys/AuthKey_$id.p8 >/dev/null && echo "Registered with asc as '${team:-default}'."
+  fi
   echo "API key $id installed ($env). Move the downloaded $p8 into your password manager and delete it."
   ;;
 p12)

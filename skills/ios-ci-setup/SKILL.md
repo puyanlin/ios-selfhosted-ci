@@ -57,7 +57,7 @@ fails, show the user the error and fix it together; don't skip it.
 - **TestFlight**: the app record must exist in App Store Connect with the same bundle ID. After that, use
   *Actions › TestFlight › Run workflow*. The `branch` field takes any ref. The Xcode choice `default` follows the
   repo's `.xcode-version`, otherwise the release Xcode.
-- **Submitting for review** is the `app-store-submit` skill.
+- **Submitting for review**: use [asc](https://asccli.sh) (its `asc-release-flow` skill if installed).
 
 ## Changing the pipeline
 

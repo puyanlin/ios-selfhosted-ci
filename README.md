@@ -1,6 +1,15 @@
 # ios-selfhosted-ci
 
-Turn the Mac on your desk into the CI for all your iOS apps — **PR checks, TestFlight builds of any branch from your phone, and AI code review**, managed from one repo.
+Turn the Mac on your desk into the CI for all your iOS apps — **PR checks with unit tests, TestFlight builds of any branch from your phone, and AI code review**, managed from one repo.
+
+This project is the **infrastructure** layer: self-hosted runners, reusable workflows, keychain isolation, signing (cloud or manual). For everything App Store Connect it pairs with [asc](https://asccli.sh); for marketing screenshots with [app-store-screenshots](https://github.com/ParthJadhav/app-store-screenshots).
+
+| Layer | Tool |
+|---|---|
+| Runners, PR check + tests, any-branch TestFlight, signing, one-command repo setup | **this repo** |
+| AI PR review | [claude-code-action](https://github.com/anthropics/claude-code-action), run on your Mac by this repo |
+| Submissions, metadata, TestFlight groups, review status | [asc](https://asccli.sh) |
+| Marketing screenshots | [app-store-screenshots](https://github.com/ParthJadhav/app-store-screenshots) → `asc screenshots upload` |
 
 [繁體中文說明 →](README.zh-TW.md)
 
@@ -44,7 +53,7 @@ What you get:
 | macOS user | Ideally a **separate standard user** just for CI (see security). Auto-login + never sleep. |
 | Power | *System Settings › Energy*: prevent sleep, start after power failure |
 | Xcode | Release Xcode at `/Applications/Xcode.app`. Keep betas elsewhere and only select them explicitly. |
-| Tools | [GitHub CLI](https://cli.github.com) (`gh auth login`), Claude Code (`claude`), [bun](https://bun.sh) (makes reviews start fast) |
+| Tools | [GitHub CLI](https://cli.github.com) (`gh auth login`), Claude Code (`claude`), [bun](https://bun.sh) (makes reviews start fast), [asc](https://asccli.sh) (`brew install asc`) |
 | GitHub | Rulesets on private repos need **GitHub Pro** (personal) or Team (org). Everything else works on Free. |
 | Network | Wired Ethernet. Point the review workflow at locally installed `claude`/`bun` so jobs don't re-download them. |
 
@@ -56,8 +65,8 @@ What you get:
 |---|---|---|
 | Enable the App Store Connect API for the team (first time only) | **Account Holder** | The "Request Access" button on *Users and Access › Integrations* |
 | Create the **team** API key | **Admin** (or Account Holder) | Users with other roles can't open the Team Keys page |
-| Key role used by this project | **Admin** | Verified for everything here: archive with automatic signing, cloud-managed distribution signing, TestFlight upload, `asc-release.py` submission |
-| Key role for `asc-release.py` alone (versions, What's New, submit) | App Manager should be enough | Not verified here; replying to customer reviews needs Admin |
+| Key role used by this project | **Admin** | Verified for everything here: archive with automatic signing, cloud-managed distribution signing, TestFlight upload, submission with asc |
+| Key role for asc alone (versions, What's New, submit) | App Manager should be enough | Not verified here; replying to customer reviews needs Admin |
 | Individual (personal) API keys | ❌ not supported | Apple: individual keys can't use the Provisioning endpoints (needed for signing), and the scripts expect an Issuer ID |
 
 Cloud-managed distribution signing is available by default to Account Holder and Admin; Developers need the
@@ -150,20 +159,31 @@ Personal GitHub accounts have no account-wide Actions secrets, so each repo need
   ```
 - **Change the pipeline** → edit `.github/workflows/*` here, then `git tag -f v1 && git push -f origin v1`. Every app picks it up on its next run. (Pin callers to a commit SHA instead of `v1` if you prefer immutable versions.)
 
-## Submitting for App Review
+## Releasing to the App Store (with asc)
 
-`scripts/asc-release.py` does the whole App Store submission through the App Store Connect API — no website, no login that expires:
+This project doesn't talk to the App Store Connect API itself — use **[asc](https://asccli.sh)** (App Store Connect CLI, MIT),
+which covers submissions, metadata, screenshots, TestFlight groups, review status and more. It uses the same API key:
 
 ```bash
-scripts/asc-release.py status --bundle-id com.example.app
-scripts/asc-release.py submit --bundle-id com.example.app --version 1.4.0 \
-    --notes-dir fastlane/metadata \            # <locale>/release_notes.txt (fastlane deliver layout)
-    --release after-approval --no-phased --dry-run    # drop --dry-run to submit
+brew install asc
+asc telemetry disable                  # optional: it sends anonymous usage stats by default
+asc install-skills                     # optional: 25 agent skills (asc-release-flow, asc-whats-new-writer, …)
+scripts/ci-signing-setup.sh asc …      # installs the key for the runner AND registers it with asc
 ```
 
-It creates (or reuses) the version, waits for the build to finish processing (`--wait-build 30`), attaches it, fills "What's New" per locale, sets release type / phased release / review notes, checks nothing is missing, and submits — also after a rejection. `--dry-run` prints every step and changes nothing.
+A typical release, after the TestFlight workflow uploaded the build:
 
-Using an AI agent? [`skills/app-store-submit/SKILL.md`](skills/app-store-submit/SKILL.md) is a Claude Code skill that lets you pick the locales, drafts the release notes from git history, shows you the plan, and only submits after you confirm. It talks to you in English or Traditional Chinese (`LANGUAGE` in the config). Install: `ln -s ~/ios-selfhosted-ci/skills/app-store-submit ~/.claude/skills/app-store-submit`.
+```bash
+asc release stage --app APP_ID --version 1.4.0 --build BUILD_ID --metadata-dir ./metadata/version/1.4.0 --dry-run
+asc release stage --app APP_ID --version 1.4.0 --build BUILD_ID --metadata-dir ./metadata/version/1.4.0 --confirm
+asc validate --app APP_ID --version 1.4.0 --platform IOS
+asc review submit --app APP_ID --version 1.4.0 --build BUILD_ID --confirm
+asc review status --app APP_ID
+```
+
+Only the API key is needed — no Apple ID password. (`asc web auth login` is optional, for extra checks Apple exposes
+only on the website.) For marketing screenshots, [app-store-screenshots](https://github.com/ParthJadhav/app-store-screenshots)
+designs them and `asc screenshots upload` uploads them.
 
 ## Choosing the Xcode version
 

@@ -95,7 +95,7 @@ the `.p12` after importing, and ask the Admin to revoke the certificate when the
 
 ## Limits
 
-- Submitting for review (`asc-release.py`) needs an API key; with only an Apple ID, submit on the website.
+- Submitting for review ([asc](https://asccli.sh)) needs an API key; with only an Apple ID, submit on the website.
 - `internal-only` can't be applied through `altool`.
 - Profiles **and** the Distribution certificate expire after a year; the job warns 30 days before a profile
   expires. New profile: run `profile` again. New certificate: redo step 1 (new `.p12` and profiles).

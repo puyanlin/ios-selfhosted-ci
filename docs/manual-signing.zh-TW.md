@@ -90,7 +90,7 @@ TestFlight job 會：
 
 ## 限制
 
-- 送審（`asc-release.py`）需要 API 金鑰；只有 Apple ID 的話，送審要在網頁上按。
+- 送審（[asc](https://asccli.sh)）需要 API 金鑰；只有 Apple ID 的話，送審要在網頁上按。
 - 透過 `altool` 上傳時，「僅限內部測試」設定不會生效。
 - 描述檔**和** Distribution 憑證都是一年到期；描述檔到期前 30 天 job 會警告。換新描述檔：再跑一次 `profile`；
   換新憑證：重做步驟 1（新的 `.p12` 和描述檔）。

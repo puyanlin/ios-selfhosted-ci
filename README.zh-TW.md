@@ -1,6 +1,15 @@
 # ios-selfhosted-ci
 
-把你桌上的 Mac 變成所有 iOS app 的 CI：**PR 自動編譯檢查、用手機把任意分支打包上 TestFlight、AI 自動 code review**，全部集中在一個 repo 管理。
+把你桌上的 Mac 變成所有 iOS app 的 CI：**PR 自動編譯＋unit test、用手機把任意分支打包上 TestFlight、AI 自動 code review**，全部集中在一個 repo 管理。
+
+這個專案負責**基礎設施**這一層：自架 runner、共用 workflow、鑰匙圈隔離、簽章（雲端或手動）。App Store Connect 相關的一切交給 [asc](https://asccli.sh)，行銷截圖交給 [app-store-screenshots](https://github.com/ParthJadhav/app-store-screenshots)。
+
+| 層 | 工具 |
+|---|---|
+| runner、PR check＋test、任意分支上 TestFlight、簽章、一鍵設定 repo | **本專案** |
+| AI PR review | [claude-code-action](https://github.com/anthropics/claude-code-action)，由本專案讓它跑在你的 Mac |
+| 送審、上架資料、TestFlight 群組、審核狀態 | [asc](https://asccli.sh) |
+| 行銷截圖 | [app-store-screenshots](https://github.com/ParthJadhav/app-store-screenshots) → `asc screenshots upload` |
 
 [English →](README.md)
 
@@ -34,7 +43,7 @@
 | macOS 使用者 | 最好**另外開一個 CI 專用的一般使用者**（見安全說明）；設定自動登入、永不睡眠 |
 | 電源 | 系統設定 › 能源：防止睡眠、停電後自動開機 |
 | Xcode | 正式版放在 `/Applications/Xcode.app`；beta 放別處，只在需要時明確指定 |
-| 工具 | [GitHub CLI](https://cli.github.com)（`gh auth login`）、Claude Code（`claude`）、[bun](https://bun.sh)（讓 review 快速啟動） |
+| 工具 | [GitHub CLI](https://cli.github.com)（`gh auth login`）、Claude Code（`claude`）、[bun](https://bun.sh)（讓 review 快速啟動）、[asc](https://asccli.sh)（`brew install asc`） |
 | GitHub | private repo 要用 ruleset 需要 **GitHub Pro**（個人）或 Team（組織）；其他功能 Free 就能用 |
 | 網路 | 建議有線網路；review workflow 指定本機的 `claude`／`bun`，避免每次重新下載 |
 
@@ -46,8 +55,8 @@
 |---|---|---|
 | 為團隊開通 App Store Connect API（只有第一次） | **帳號持有人** | 「使用者與存取權限 › 整合」頁的「要求權限」按鈕 |
 | 建立**團隊** API 金鑰 | **管理**（或帳號持有人） | 其他角色打不開「團隊金鑰」頁 |
-| 本專案使用的金鑰角色 | **管理** | 這裡所有功能都實測過：自動簽章 archive、雲端管理發佈簽章、上傳 TestFlight、`asc-release.py` 送審 |
-| 只用 `asc-release.py`（建版本、填新功能、送審） | 「App 管理」應該就夠 | 本專案沒有實測；回覆使用者評論需要「管理」 |
+| 本專案使用的金鑰角色 | **管理** | 這裡所有功能都實測過：自動簽章 archive、雲端管理發佈簽章、上傳 TestFlight、用 asc 送審 |
+| 只用 asc（建版本、填新功能、送審） | 「App 管理」應該就夠 | 本專案沒有實測；回覆使用者評論需要「管理」 |
 | 個人 API 金鑰 | ❌ 不支援 | Apple 文件寫明個人金鑰不能用 Provisioning 相關 API（簽章需要），而且腳本需要 Issuer ID |
 
 雲端管理的發佈簽章，帳號持有人和「管理」預設就能用；「開發者」要另外勾選 *Access to Cloud Managed Distribution
@@ -138,20 +147,30 @@ GitHub 個人帳號沒有「全帳號共用」的 Actions secret，所以每個 
   ```
 - **修改流程**：改這裡的 `.github/workflows/*`，再 `git tag -f v1 && git push -f origin v1`，所有 app 下次執行就會用新版。（想要不可變的版本，可以改成釘在 commit SHA。）
 
-## 送審 App Store
+## 上架 App Store（用 asc）
 
-`scripts/asc-release.py` 透過 App Store Connect API 完成整個送審流程，不用開網頁、也不會遇到登入過期：
+這個專案本身不直接呼叫 App Store Connect API，請用 **[asc](https://asccli.sh)**（App Store Connect CLI，MIT）。送審、上架資料、截圖、
+TestFlight 群組、審核狀態都能做，用的是同一把 API 金鑰：
 
 ```bash
-scripts/asc-release.py status --bundle-id com.example.app
-scripts/asc-release.py submit --bundle-id com.example.app --version 1.4.0 \
-    --notes-dir fastlane/metadata \            # <語系>/release_notes.txt（fastlane deliver 的目錄結構）
-    --release after-approval --no-phased --dry-run    # 拿掉 --dry-run 才會真的送審
+brew install asc
+asc telemetry disable                  # 選用：預設會回傳匿名使用統計
+asc install-skills                     # 選用：25 個 agent skill（asc-release-flow、asc-whats-new-writer…）
+scripts/ci-signing-setup.sh asc …      # 幫 runner 安裝金鑰，同時登入 asc
 ```
 
-它會建立或沿用版本、等 build 處理完（`--wait-build 30`）、選 build、填各語系「新功能」、設定發佈方式／階段性發佈／審核備註、檢查沒有漏填，最後送審；被退件後重新送審也適用。`--dry-run` 會列出每一步但不改任何東西。
+TestFlight workflow 上傳 build 之後，典型的上架流程：
 
-用 AI agent 的話，[`skills/app-store-submit/SKILL.md`](skills/app-store-submit/SKILL.md) 是 Claude Code 的 skill：讓你選語系、從 git 紀錄起草更新說明、讓你確認計畫，你同意後才送審。它可以用繁中或英文跟你溝通（設定檔的 `LANGUAGE`）。安裝：`ln -s ~/ios-selfhosted-ci/skills/app-store-submit ~/.claude/skills/app-store-submit`。
+```bash
+asc release stage --app APP_ID --version 1.4.0 --build BUILD_ID --metadata-dir ./metadata/version/1.4.0 --dry-run
+asc release stage --app APP_ID --version 1.4.0 --build BUILD_ID --metadata-dir ./metadata/version/1.4.0 --confirm
+asc validate --app APP_ID --version 1.4.0 --platform IOS
+asc review submit --app APP_ID --version 1.4.0 --build BUILD_ID --confirm
+asc review status --app APP_ID
+```
+
+只需要 API 金鑰，不用 Apple ID 密碼（`asc web auth login` 是選用的，只給 Apple 沒開放 API 的額外檢查用）。
+行銷截圖用 [app-store-screenshots](https://github.com/ParthJadhav/app-store-screenshots) 設計，再用 `asc screenshots upload` 上傳。
 
 ## 指定 Xcode 版本
 
