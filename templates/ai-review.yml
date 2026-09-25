@@ -10,7 +10,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-      id-token: write
     secrets: inherit
     with:
       provider: __PROVIDER__

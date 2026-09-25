@@ -1,109 +1,66 @@
 name: AI PR review
-description: Review a pull request with Claude, OpenAI Codex or Google Gemini, using one shared review prompt.
+description: Review a pull request with Claude, OpenAI Codex or Google Gemini through their CLIs, with one shared prompt and one shared way of posting (inline comments + a summary).
 inputs:
   provider:
     description: claude | codex | gemini
     default: claude
   model:
-    description: Model ID; empty = the provider's default (claude-opus-5-5 for Claude)
+    description: "Model ID; empty = the provider's default (claude-opus-5-5 for Claude)"
     default: ''
   language:
     default: English
+  claude-path:
+    description: "Claude Code binary on the runner (default: claude on PATH)"
+    default: ''
   claude-token:
     default: ''
   openai-api-key:
+    description: "Optional; without it, Codex uses the runner user's codex login (e.g. ChatGPT sign-in)"
     default: ''
   gemini-api-key:
+    description: "Optional; without it, Gemini uses the runner user's Google sign-in"
     default: ''
-  claude-path:
-    default: ''
-  bun-path:
-    default: ''
-  show-full-output:
-    default: 'false'
 runs:
   using: composite
   steps:
     - id: prep
       shell: bash
       env:
-        PROVIDER: ${{ inputs.provider }}
+        GH_TOKEN: ${{ github.token }}
         LANGUAGE: ${{ inputs.language }}
         REPO: ${{ github.repository }}
         PR: ${{ github.event.pull_request.number }}
-        BASE_REF: ${{ github.event.pull_request.base.ref }}
+        TITLE: ${{ github.event.pull_request.title }}
         TEMPLATE: ${{ github.action_path }}/prompt.md
       run: |
         set -euo pipefail
-        case "$PROVIDER" in claude|codex|gemini) ;; *) echo "::error::provider must be claude, codex or gemini (got '$PROVIDER')"; exit 1 ;; esac
-        mkdir -p "$RUNNER_TEMP/ai-review"
-        DIFF="$RUNNER_TEMP/ai-review/pr.diff"
-        git fetch --no-tags --depth=200 origin "$BASE_REF" >/dev/null 2>&1 || true
-        git diff "origin/$BASE_REF...HEAD" > "$DIFF" || git diff "origin/$BASE_REF" > "$DIFF"
-        if [ "$PROVIDER" = claude ]; then
-          export OUTPUT='Use `gh pr diff` for the changes. Post each concrete issue as an inline comment on the line, then finish with one `gh pr comment` summary: overall assessment + the issue list; if nothing is wrong, say so briefly.'
-        else
-          # Other providers run without GitHub write tools; the workflow posts their answer as one PR comment.
-          export OUTPUT="The PR diff is in $DIFF (paths are relative to the repository root). Do not modify any files. Reply with ONLY the review in Markdown: a one-paragraph overall assessment, then the issues as a list, each starting with \`path:line\`. If nothing is wrong, say so briefly."
-        fi
-        python3 - "$TEMPLATE" "$RUNNER_TEMP/ai-review/prompt.md" <<'PY'
+        WORK="$RUNNER_TEMP/ai-review"; rm -rf "$WORK"; mkdir -p "$WORK"
+        # The diff goes inside the workspace so every CLI can read it from its (read-only) sandbox.
+        mkdir -p .ai-review && gh pr diff "$PR" --repo "$REPO" > .ai-review/pr.diff
+        export DIFF=.ai-review/pr.diff
+        python3 - "$TEMPLATE" "$WORK/prompt.md" <<'PY'
         import os,sys
         t=open(sys.argv[1]).read()
-        for k in ('REPO','PR','LANGUAGE','OUTPUT'):
+        for k in ('REPO','PR','TITLE','LANGUAGE','DIFF'):
             t=t.replace('{{'+k+'}}', os.environ[k])
         open(sys.argv[2],'w').write(t)
         PY
-        echo "file=$RUNNER_TEMP/ai-review/prompt.md" >> "$GITHUB_OUTPUT"
-        { echo 'text<<__PROMPT__'; cat "$RUNNER_TEMP/ai-review/prompt.md"; echo '__PROMPT__'; } >> "$GITHUB_OUTPUT"
-
-    # ---- Claude: posts inline comments + a summary itself ----
-    - if: ${{ inputs.provider == 'claude' }}
-      uses: anthropics/claude-code-action@v1
+        echo "work=$WORK" >> "$GITHUB_OUTPUT"
+    - shell: bash
       env:
-        # Own config dir per job: never load the runner user's ~/.claude (hooks, plugins, MCP) — they can hang a headless job.
-        CLAUDE_CONFIG_DIR: ${{ runner.temp }}/claude-config
-      with:
-        claude_code_oauth_token: ${{ inputs.claude-token }}
-        github_token: ${{ github.token }}
-        path_to_claude_code_executable: ${{ inputs.claude-path }}
-        path_to_bun_executable: ${{ inputs.bun-path }}
-        show_full_output: ${{ inputs.show-full-output }}
-        prompt: ${{ steps.prep.outputs.text }}
-        claude_args: |
-          --model ${{ inputs.model || 'claude-opus-5-5' }}
-          --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"
-
-    # ---- OpenAI Codex ----
-    - if: ${{ inputs.provider == 'codex' }}
-      id: codex
-      uses: openai/codex-action@v1
-      with:
-        openai-api-key: ${{ inputs.openai-api-key }}
-        prompt-file: ${{ steps.prep.outputs.file }}
-        model: ${{ inputs.model }}
-        sandbox: read-only
-        # drop-sudo permanently revokes the runner user's sudo on reused self-hosted machines — only use it on
-        # disposable GitHub-hosted runners.
-        safety-strategy: ${{ runner.environment == 'github-hosted' && 'drop-sudo' || 'unsafe' }}
-
-    # ---- Google Gemini ----
-    - if: ${{ inputs.provider == 'gemini' }}
-      id: gemini
-      uses: google-github-actions/run-gemini-cli@v0
-      with:
-        gemini_api_key: ${{ inputs.gemini-api-key }}
-        gemini_model: ${{ inputs.model }}
-        prompt: ${{ steps.prep.outputs.text }}
-
-    - if: ${{ inputs.provider != 'claude' }}
-      shell: bash
+        PROVIDER: ${{ inputs.provider }}
+        MODEL: ${{ inputs.model }}
+        PROMPT_FILE: ${{ steps.prep.outputs.work }}/prompt.md
+        SCHEMA_FILE: ${{ github.action_path }}/schema.json
+        WORK: ${{ steps.prep.outputs.work }}
+        CLAUDE_PATH: ${{ inputs.claude-path }}
+        CLAUDE_CODE_OAUTH_TOKEN: ${{ inputs.claude-token }}
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+        GEMINI_API_KEY: ${{ inputs.gemini-api-key }}
+      run: ${{ github.action_path }}/run.sh
+    - shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
         PR: ${{ github.event.pull_request.number }}
-        PROVIDER: ${{ inputs.provider }}
-        BODY: ${{ inputs.provider == 'codex' && steps.codex.outputs.final-message || steps.gemini.outputs.summary }}
-      run: |
-        set -euo pipefail
-        [ -n "$BODY" ] || { echo "::error::$PROVIDER returned no review"; exit 1; }
-        printf '## AI review (%s)\n\n%s\n' "$PROVIDER" "$BODY" > "$RUNNER_TEMP/ai-review/comment.md"
-        gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/ai-review/comment.md"
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: python3 ${{ github.action_path }}/post.py "${{ steps.prep.outputs.work }}/review.json" "${{ inputs.provider }}${{ inputs.model && format(' · {0}', inputs.model) || '' }}"

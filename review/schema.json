@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "issues"],
+  "properties": {
+    "summary": { "type": "string" },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "line", "severity", "title", "body"],
+        "properties": {
+          "path": { "type": "string" },
+          "line": { "type": "integer" },
+          "severity": { "type": "string", "enum": ["high", "medium", "low"] },
+          "title": { "type": "string" },
+          "body": { "type": "string" }
+        }
+      }
+    }
+  }
+}

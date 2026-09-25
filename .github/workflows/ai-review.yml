@@ -1,11 +1,12 @@
-# Reusable: AI code review on pull requests with a choice of provider (one shared prompt, review/prompt.md).
-#   provider: claude (default) — runs on your Mac's `claude-review` runner, uses your Claude subscription
-#                                (secret CLAUDE_CODE_OAUTH_TOKEN), posts inline comments + a summary
-#   provider: codex            — OpenAI Codex (secret OPENAI_API_KEY), posts one summary comment
-#   provider: gemini           — Google Gemini (secret GEMINI_API_KEY), posts one summary comment
-# Codex and Gemini default to a disposable GitHub-hosted Linux runner: they only call a cloud API, and Codex's
-# default sandboxing permanently changes the runner account (revokes sudo) on reused machines.
-# Callers: `secrets: inherit` and permissions contents: read, pull-requests: write, id-token: write.
+# Reusable: AI code review on pull requests. Pick the provider the runner's owner uses — each runs through its own
+# CLI on your Mac, signed in the way you already use it (subscription or API key), with one shared prompt
+# (review/prompt.md) and one shared way of posting (a PR review with inline comments + a summary).
+#   provider: claude (default)  Claude Code — secret CLAUDE_CODE_OAUTH_TOKEN (claude setup-token)
+#   provider: codex             OpenAI Codex CLI — the runner's `codex login` (ChatGPT) or secret OPENAI_API_KEY
+#   provider: gemini            Gemini CLI — the runner's Google sign-in or secret GEMINI_API_KEY
+# runner: auto = your Mac's `claude-review` runner. '"ubuntu-latest"' also works: the CLI is installed there
+# and an API-key secret is required.
+# Callers: `secrets: inherit` and permissions contents: read, pull-requests: write.
 name: AI review
 on:
   workflow_call:
@@ -13,10 +14,10 @@ on:
       provider: { type: string, default: claude }
       model: { type: string, default: '', description: 'Empty = provider default (claude-opus-5-5 for Claude)' }
       language: { type: string, default: English }
-      claude-path: { type: string, default: '', description: 'Local Claude Code on the runner (avoids a download every job)' }
-      bun-path: { type: string, default: '' }
-      runner: { type: string, default: auto, description: 'auto, or a runs-on value as JSON, e.g. ["self-hosted","claude-review"] or "ubuntu-latest"' }
-      show-full-output: { type: boolean, default: false }
+      claude-path: { type: string, default: '', description: 'Claude Code binary on the runner' }
+      bun-path: { type: string, default: '', description: 'Unused (kept for older callers)' }
+      runner: { type: string, default: auto, description: 'auto, or a runs-on value as JSON, e.g. "ubuntu-latest"' }
+      show-full-output: { type: boolean, default: false, description: 'Unused (kept for older callers)' }
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: { required: false }
       OPENAI_API_KEY: { required: false }
@@ -25,27 +26,22 @@ jobs:
   review:
     # Never review fork PRs with repository secrets.
     if: ${{ !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository }}
-    runs-on: ${{ fromJSON(inputs.runner != 'auto' && inputs.runner || (inputs.provider == 'claude' && '["self-hosted","claude-review"]' || '"ubuntu-latest"')) }}
+    runs-on: ${{ fromJSON(inputs.runner != 'auto' && inputs.runner || '["self-hosted","claude-review"]') }}
     permissions:
       contents: read
       pull-requests: write
-      id-token: write
     concurrency:
       group: ai-review-${{ github.repository }}-${{ github.event.pull_request.number }}
       cancel-in-progress: true
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: puyanlin/ios-selfhosted-ci/review@v1
         with:
           provider: ${{ inputs.provider }}
           model: ${{ inputs.model }}
           language: ${{ inputs.language }}
+          claude-path: ${{ inputs.claude-path }}
           claude-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           gemini-api-key: ${{ secrets.GEMINI_API_KEY }}
-          claude-path: ${{ inputs.claude-path }}
-          bun-path: ${{ inputs.bun-path }}
-          show-full-output: ${{ inputs.show-full-output }}
