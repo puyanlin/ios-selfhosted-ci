@@ -95,6 +95,8 @@ scripts/bootstrap-repo.sh MyApp --skip-testing "MyAppTests/SlowTests"
 
 Re-running it on a repo that is already set up is safe: it only updates changed caller files and never duplicates the ruleset. Set `XCODE_BETA_APP` in the config to offer a beta Xcode in the TestFlight menu.
 
+> Using Claude Code? `ln -s ~/ios-selfhosted-ci/skills/ios-ci-setup ~/.claude/skills/ios-ci-setup` and just ask it to "set up CI for MyApp" — the [ios-ci-setup skill](skills/ios-ci-setup/SKILL.md) runs this for you.
+
 ### 4. Claude review token (once, plus once per new repo)
 
 In **your own terminal** (not through an AI agent, so the token never lands in a transcript):

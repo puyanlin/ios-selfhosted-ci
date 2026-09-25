@@ -85,6 +85,8 @@ scripts/bootstrap-repo.sh MyApp --skip-testing "MyAppTests/SlowTests"
 
 已經設好的 repo 重跑也安全：只會更新有變動的呼叫檔，不會重複建立 ruleset。在設定檔設 `XCODE_BETA_APP`，TestFlight 的 Xcode 選單就會多出 beta 選項。
 
+> 用 Claude Code 的話：`ln -s ~/ios-selfhosted-ci/skills/ios-ci-setup ~/.claude/skills/ios-ci-setup`，之後直接說「幫 MyApp 設 CI」，[ios-ci-setup skill](skills/ios-ci-setup/SKILL.md) 會幫你跑這些步驟。
+
 ### 4. Claude review 的 token（一次，之後每個新 repo 再設一次）
 
 在**你自己的終端機**執行（不要透過 AI agent，token 才不會留在對話紀錄）：
