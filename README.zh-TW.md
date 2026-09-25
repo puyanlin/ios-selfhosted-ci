@@ -106,6 +106,21 @@ GitHub 個人帳號沒有「全帳號共用」的 Actions secret，所以每個 
   ```
 - **修改流程**：改這裡的 `.github/workflows/*`，再 `git tag -f v1 && git push -f origin v1`，所有 app 下次執行就會用新版。（想要不可變的版本，可以改成釘在 commit SHA。）
 
+## 送審 App Store
+
+`scripts/asc-release.py` 透過 App Store Connect API 完成整個送審流程，不用開網頁、也不會遇到登入過期：
+
+```bash
+scripts/asc-release.py status --bundle-id com.example.app
+scripts/asc-release.py submit --bundle-id com.example.app --version 1.4.0 \
+    --notes-dir fastlane/metadata \            # <語系>/release_notes.txt（fastlane deliver 的目錄結構）
+    --release after-approval --no-phased --dry-run    # 拿掉 --dry-run 才會真的送審
+```
+
+它會建立或沿用版本、等 build 處理完（`--wait-build 30`）、選 build、填各語系「新功能」、設定發佈方式／階段性發佈／審核備註、檢查沒有漏填，最後送審；被退件後重新送審也適用。`--dry-run` 會列出每一步但不改任何東西。
+
+用 AI agent 的話，[`skills/app-store-submit/SKILL.md`](skills/app-store-submit/SKILL.md) 是 Claude Code 的 skill：從 git 紀錄起草更新說明、讓你確認計畫，你同意後才送審。
+
 ## 指定 Xcode 版本
 
 所有 workflow 用同一套規則選 Xcode（見 `xcode.sh`）：

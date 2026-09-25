@@ -116,6 +116,21 @@ Personal GitHub accounts have no account-wide Actions secrets, so each repo need
   ```
 - **Change the pipeline** → edit `.github/workflows/*` here, then `git tag -f v1 && git push -f origin v1`. Every app picks it up on its next run. (Pin callers to a commit SHA instead of `v1` if you prefer immutable versions.)
 
+## Submitting for App Review
+
+`scripts/asc-release.py` does the whole App Store submission through the App Store Connect API — no website, no login that expires:
+
+```bash
+scripts/asc-release.py status --bundle-id com.example.app
+scripts/asc-release.py submit --bundle-id com.example.app --version 1.4.0 \
+    --notes-dir fastlane/metadata \            # <locale>/release_notes.txt (fastlane deliver layout)
+    --release after-approval --no-phased --dry-run    # drop --dry-run to submit
+```
+
+It creates (or reuses) the version, waits for the build to finish processing (`--wait-build 30`), attaches it, fills "What's New" per locale, sets release type / phased release / review notes, checks nothing is missing, and submits — also after a rejection. `--dry-run` prints every step and changes nothing.
+
+Using an AI agent? [`skills/app-store-submit/SKILL.md`](skills/app-store-submit/SKILL.md) is a Claude Code skill that drafts the release notes from git history, shows you the plan, and only submits after you confirm.
+
 ## Choosing the Xcode version
 
 Every workflow resolves Xcode the same way (see `xcode.sh`):
