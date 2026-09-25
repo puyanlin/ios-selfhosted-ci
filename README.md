@@ -48,6 +48,36 @@ What you get:
 | GitHub | Rulesets on private repos need **GitHub Pro** (personal) or Team (org). Everything else works on Free. |
 | Network | Wired Ethernet. Point the review workflow at locally installed `claude`/`bun` so jobs don't re-download them. |
 
+## Who can set this up
+
+**App Store Connect** (the API key lives on the runner Mac):
+
+| Step | Who | Notes |
+|---|---|---|
+| Enable the App Store Connect API for the team (first time only) | **Account Holder** | The "Request Access" button on *Users and Access › Integrations* |
+| Create the **team** API key | **Admin** (or Account Holder) | Users with other roles can't open the Team Keys page |
+| Key role used by this project | **Admin** | Verified for everything here: archive with automatic signing, cloud-managed distribution signing, TestFlight upload, `asc-release.py` submission |
+| Key role for `asc-release.py` alone (versions, What's New, submit) | App Manager should be enough | Not verified here; replying to customer reviews needs Admin |
+| Individual (personal) API keys | ❌ not supported | Apple: individual keys can't use the Provisioning endpoints (needed for signing), and the scripts expect an Issuer ID |
+
+Cloud-managed distribution signing is available by default to Account Holder and Admin; Developers need the
+*Access to Cloud Managed Distribution Certificate* permission. Whether an **App Manager key** can cloud-sign
+isn't documented — use Admin unless you've tested otherwise.
+
+If the app belongs to a team where you're only App Manager or Developer, ask that team's Account Holder or an
+Admin to create a team key (Admin) for you, or to give you the Admin role. Until then you can still use the
+PR check and Claude review (`--no-testflight`).
+
+**GitHub**: you need admin rights on the app repos (runners, secrets, rulesets). Rulesets on **private** repos
+need GitHub Pro (personal accounts) or Team (organizations).
+
+**The Mac**: the runner user's login keychain must hold an *Apple Development* identity for the team (Xcode ›
+Settings › Accounts creates it); `ci-signing-setup.sh keychain` copies it into `ci.keychain`.
+
+Sources: [Creating API keys](https://developer.apple.com/documentation/appstoreconnectapi/creating-api-keys-for-app-store-connect-api) ·
+[Cloud-managed certificates](https://developer.apple.com/help/account/certificates/cloud-managed-certificates/) ·
+[Program roles](https://developer.apple.com/help/account/access/roles/)
+
 ## Setup (about 20 minutes)
 
 ### 1. Use this repo

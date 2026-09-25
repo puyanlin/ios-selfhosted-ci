@@ -38,6 +38,34 @@
 | GitHub | private repo 要用 ruleset 需要 **GitHub Pro**（個人）或 Team（組織）；其他功能 Free 就能用 |
 | 網路 | 建議有線網路；review workflow 指定本機的 `claude`／`bun`，避免每次重新下載 |
 
+## 誰可以設定
+
+**App Store Connect**（API 金鑰放在 runner 那台 Mac 上）：
+
+| 步驟 | 需要的角色 | 說明 |
+|---|---|---|
+| 為團隊開通 App Store Connect API（只有第一次） | **帳號持有人** | 「使用者與存取權限 › 整合」頁的「要求權限」按鈕 |
+| 建立**團隊** API 金鑰 | **管理**（或帳號持有人） | 其他角色打不開「團隊金鑰」頁 |
+| 本專案使用的金鑰角色 | **管理** | 這裡所有功能都實測過：自動簽章 archive、雲端管理發佈簽章、上傳 TestFlight、`asc-release.py` 送審 |
+| 只用 `asc-release.py`（建版本、填新功能、送審） | 「App 管理」應該就夠 | 本專案沒有實測；回覆使用者評論需要「管理」 |
+| 個人 API 金鑰 | ❌ 不支援 | Apple 文件寫明個人金鑰不能用 Provisioning 相關 API（簽章需要），而且腳本需要 Issuer ID |
+
+雲端管理的發佈簽章，帳號持有人和「管理」預設就能用；「開發者」要另外勾選 *Access to Cloud Managed Distribution
+Certificate* 權限。「App 管理」角色的**金鑰**能不能雲端簽章，官方沒有寫清楚，沒實測過之前請用「管理」。
+
+如果 app 屬於另一個團隊，而你在那邊只是「App 管理」或「開發者」，請那個團隊的帳號持有人或「管理」角色幫你建一把
+團隊金鑰（角色選「管理」），或把你的角色加上「管理」。在那之前還是可以用 PR check 和 Claude review（`--no-testflight`）。
+
+**GitHub**：要有 app repo 的管理員權限（runner、secret、ruleset）。**private** repo 要用 ruleset，個人帳號需要
+GitHub Pro，組織需要 Team 方案。
+
+**Mac**：runner 使用者的登入鑰匙圈裡要有該團隊的 *Apple Development* 憑證（Xcode › Settings › Accounts 會建立），
+`ci-signing-setup.sh keychain` 會把它複製進 `ci.keychain`。
+
+來源：[Creating API keys](https://developer.apple.com/documentation/appstoreconnectapi/creating-api-keys-for-app-store-connect-api) ·
+[Cloud-managed certificates](https://developer.apple.com/help/account/certificates/cloud-managed-certificates/) ·
+[Program roles](https://developer.apple.com/help/account/access/roles/)
+
 ## 設定步驟（約 20 分鐘）
 
 ### 1. 取得這個 repo
