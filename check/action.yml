@@ -20,6 +20,9 @@ inputs:
   xcode:
     description: Xcode path or version (27.1, 27); empty = the repo's .xcode-version, else the runner default
     default: ''
+  test-timeout-minutes:
+    description: "Hard time limit for the test phase. Keep it below the job's timeout-minutes (40 in the reusable workflow) so a hung xcodebuild is stopped and cleaned up by check.sh, not by GitHub"
+    default: '35'
 runs:
   using: composite
   steps:
@@ -32,7 +35,11 @@ runs:
         SKIP_UI_TESTS: ${{ inputs.skip-ui-tests }}
         SKIP_TESTING: ${{ inputs.skip-testing }}
         XCODE_APP: ${{ inputs.xcode }}
-      run: ${{ github.action_path }}/../check.sh
+        TEST_TIMEOUT_MINUTES: ${{ inputs.test-timeout-minutes }}
+      # exec: when the job is cancelled the runner signals only this step's process (SIGINT, SIGTERM 7.5 s
+      # later, SIGKILL 2.5 s after that). exec makes that process check.sh itself, so its traps can stop
+      # xcodebuild, delete the simulator and release the lock; a wrapper shell would just wait for it.
+      run: exec ${{ github.action_path }}/../check.sh
     - if: failure()
       uses: actions/upload-artifact@v4
       with:
