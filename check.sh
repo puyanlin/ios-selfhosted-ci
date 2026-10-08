@@ -108,6 +108,7 @@ print((rt or {}).get("identifier",""), (pick or {}).get("identifier",""))')"
   # blocking everyone for 30 min.
   mkdir -p ${LOCK:h}
   waited=0
+  while :; do
   until mkdir $LOCK 2>/dev/null; do
     read -r holder parent started deadline run <<< "$(cat $LOCK/info 2>/dev/null)"   # one consistent snapshot
     [[ -z ${started:-} ]] && started=$(stat -f %m $LOCK 2>/dev/null || echo $EPOCHSECONDS)   # info never written
@@ -120,8 +121,9 @@ print((rt or {}).get("identifier",""), (pick or {}).get("identifier",""))')"
     elif (( EPOCHSECONDS > ${deadline:-$(( started + TEST_TIMEOUT + LOCK_MARGIN ))} )); then stale="held for $(( age / 60 )) min, past the deadline the holder recorded"
     fi
     if [[ -n $stale ]]; then
-      # Take it atomically: rename first (only one waiter can win), then make sure what we renamed is still
-      # the lock we judged and not a new holder's, and only then delete it.
+      # Take it atomically: re-read (the lock may have changed hands since the snapshot), rename (only one
+      # waiter can win), make sure what we renamed is still the lock we judged, and only then delete it.
+      [[ "$(cat $LOCK/info 2>/dev/null)" == "${holder:+$holder $parent $started $deadline $run}" ]] || { sleep 1; continue; }
       if mv $LOCK $LOCK.stale.$$ 2>/dev/null; then
         moved=$(cat $LOCK.stale.$$/info 2>/dev/null || true)
         if [[ ${moved%% *} == ${holder:-} ]]; then
@@ -144,8 +146,13 @@ print((rt or {}).get("identifier",""), (pick or {}).get("identifier",""))')"
   run_url="local run"
   [[ -n ${GITHUB_RUN_ID:-} ]] && run_url="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/$GITHUB_RUN_ID"
   parent_field=-; (( PPID > 1 )) && parent_field=$PPID
-  print -r -- "$$ $parent_field $EPOCHSECONDS $(( EPOCHSECONDS + TEST_TIMEOUT + LOCK_MARGIN )) $run_url" > $LOCK/info.tmp \
-    && mv $LOCK/info.tmp $LOCK/info
+  { print -r -- "$$ $parent_field $EPOCHSECONDS $(( EPOCHSECONDS + TEST_TIMEOUT + LOCK_MARGIN )) $run_url" > $LOCK/info.tmp \
+    && mv $LOCK/info.tmp $LOCK/info; } 2>/dev/null || true
+  # Make sure the lock is still ours: a waiter working from an old snapshot may have taken it in between.
+  info=$(cat $LOCK/info 2>/dev/null || true)
+  [[ ${info%% *} == $$ ]] && break
+  LOCK_HELD=''; echo "Lost the simulator lock while taking it; trying again"
+  done
   SIM_NAME="ci-${GITHUB_RUN_ID:-local}-$$"
   run_bg -t 120 -o $WORK/sim-udid.txt -e $WORK/simctl-create.log xcrun simctl create $SIM_NAME $DEVTYPE $RUNTIME \
     || { rc=$?; cat $WORK/simctl-create.log; echo "::error::simctl create failed (exit $rc)"; exit 1; }
@@ -184,6 +191,8 @@ print((rt or {}).get("identifier",""), (pick or {}).get("identifier",""))')"
     exit 1   # hard time limit; xcb printed the error, cleanup deletes the simulator and releases the lock
   elif grep -qE 'is not currently configured for the test action|There are no test bundles available to test' $WORK/test.log; then
     endstep; echo "No tests configured for $SCHEME — building instead"
+    # The build needs neither the simulator nor the lock: hand both back before it starts.
+    simctl_quiet shutdown $SIM; release_lock; simctl_quiet delete $SIM; SIM='' SIM_NAME=''
     step "Build $SCHEME (iOS simulator)"
     xcb build build "${COMMON[@]}" -destination 'generic/platform=iOS Simulator'
     endstep; RESULT="build passed (no tests configured)"
