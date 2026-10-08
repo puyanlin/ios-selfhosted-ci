@@ -124,11 +124,13 @@ print((rt or {}).get("identifier",""), (pick or {}).get("identifier",""))')"
   while :; do
     print -r -- "$$ $parent_field $EPOCHSECONDS $(( EPOCHSECONDS + TEST_TIMEOUT + LOCK_MARGIN )) $run_url" > $NEW/info
     rename_dir $NEW $LOCK && break
-    read -r holder parent started deadline run <<< "$(cat $LOCK/info 2>/dev/null)"   # one consistent snapshot
-    [[ -z ${started:-} ]] && started=$(stat -f %m $LOCK 2>/dev/null || echo $EPOCHSECONDS)   # info never written
+    snapshot=$(cat $LOCK/info $LOCK/pid 2>/dev/null || true)   # what we judge; re-read before acting on it
+    read -r holder parent started deadline run <<< "$(cat $LOCK/info 2>/dev/null)"
+    [[ -z ${holder:-} ]] && holder=$(cat $LOCK/pid 2>/dev/null || true)   # lock from the previous check.sh (pid file only)
+    [[ -z ${started:-} ]] && started=$(stat -f %m $LOCK 2>/dev/null || echo $EPOCHSECONDS)   # no info: use the dir's age
     age=$(( EPOCHSECONDS - started ))
     stale=''
-    if [[ -z ${holder:-} ]]; then (( age > 60 )) && stale="no holder recorded after $age s"
+    if [[ -z ${holder:-} ]]; then (( age > 60 )) && stale="no holder recorded after $age s"   # neither info nor pid
     elif ! kill -0 $holder 2>/dev/null; then stale="pid $holder is gone"
     elif [[ $(ps -o command= -p $holder 2>/dev/null) != *check.sh* ]]; then stale="pid $holder is no longer check.sh"
     elif [[ ${parent:--} != - ]] && ! kill -0 $parent 2>/dev/null; then stale="the runner process that started pid $holder is gone"
@@ -137,9 +139,9 @@ print((rt or {}).get("identifier",""), (pick or {}).get("identifier",""))')"
     if [[ -n $stale ]]; then
       # Take it atomically: re-read (the lock may have changed hands since the snapshot), rename (only one
       # waiter can win), make sure what we renamed is still the lock we judged, and only then delete it.
-      [[ "$(cat $LOCK/info 2>/dev/null)" == "${holder:+$holder $parent $started $deadline $run}" ]] || { sleep 1; continue; }
+      [[ "$(cat $LOCK/info $LOCK/pid 2>/dev/null)" == "$snapshot" ]] || { sleep 1; continue; }
       if rename_dir $LOCK $LOCK.stale.$$ 2>/dev/null; then
-        moved=$(cat $LOCK.stale.$$/info 2>/dev/null || true)
+        moved=$(cat $LOCK.stale.$$/info 2>/dev/null || cat $LOCK.stale.$$/pid 2>/dev/null || true)
         if [[ ${moved%% *} == ${holder:-} ]]; then
           echo "Removing stale simulator lock: $stale (${run:-unknown run})"; rm -rf $LOCK.stale.$$
         else
