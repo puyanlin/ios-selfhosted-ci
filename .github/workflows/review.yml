@@ -1,7 +1,9 @@
-# This repo's own pull requests get the same AI review as the app repos, through the reusable workflow at
-# the same commit. The repo is public, so it runs on a GitHub-hosted runner — never on a self-hosted one
-# (see README: a self-hosted runner on a public repo lets any fork PR run code on your Mac) — and the
-# reusable workflow skips fork PRs. Needs the CLAUDE_CODE_OAUTH_TOKEN secret (scripts/set-claude-token.sh).
+# This repo's own pull requests get the same AI review as the app repos. The reusable workflow comes from
+# the PR's commit, but the review action it calls is the published v1 (puyanlin/ios-selfhosted-ci/review@v1),
+# so changes under review/ are not exercised by the PR's own review. The repo is public, so it runs on a
+# GitHub-hosted runner — never on a self-hosted one (see README: a self-hosted runner on a public repo lets
+# any fork PR run code on your Mac) — and the reusable workflow skips fork PRs.
+# Needs the CLAUDE_CODE_OAUTH_TOKEN secret (scripts/set-claude-token.sh).
 name: AI review (this repo)
 on:
   pull_request:
