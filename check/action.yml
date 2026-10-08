@@ -21,7 +21,7 @@ inputs:
     description: Xcode path or version (27.1, 27); empty = the repo's .xcode-version, else the runner default
     default: ''
   test-timeout-minutes:
-    description: "Hard time limit for the test phase. Keep it below the job's timeout-minutes (40 in the reusable workflow) so a hung xcodebuild is stopped and cleaned up by check.sh, not by GitHub"
+    description: "Hard time limit for the test phase itself (xcodebuild test), counted from when the tests start; a hung xcodebuild is stopped and cleaned up by check.sh even if no cancel ever arrives. The job's timeout-minutes (40 in the reusable workflow) still bounds the whole job, lock wait and simulator boot included; its cancel runs the same cleanup"
     default: '35'
 runs:
   using: composite
