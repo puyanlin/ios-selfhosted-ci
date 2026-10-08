@@ -39,15 +39,20 @@ cleanup() {
   local p; for p in ${(f)"$(pgrep -P $$)"}; do kill -KILL -- -$p $p 2>/dev/null; done
   # The simulator by UDID, or by its unique name if we were stopped before simctl create answered.
   local dev=${SIM:-$SIM_NAME}
+  rm -rf $LOCK.new.$$
   if [[ -n $STOPPED_BY ]]; then
     release_lock
+    # DerivedData lives at the same path for every job on this runner, so rename it now (instant) and let the
+    # detached process delete the renamed copy — deleting $DD minutes later could hit the next job's build.
+    local trash=''
+    if [[ -d $DD ]]; then trash=$DD.trash.$$; mv $DD $trash 2>/dev/null || trash=''; fi
     # Own session, HUP ignored: finishes even after the runner kills this process. Each simctl call is time-boxed.
     perl -MPOSIX -e '$SIG{HUP}="IGNORE"; setsid(); exec @ARGV' zsh -c '
       if [[ -n $1 ]]; then
         perl -e "alarm 60; exec @ARGV" xcrun simctl shutdown $1
         perl -e "alarm 60; exec @ARGV" xcrun simctl delete $1
       fi
-      rm -rf $2' _ "$dev" "$DD" </dev/null >/dev/null 2>&1 &
+      [[ -n $2 ]] && rm -rf $2' _ "$dev" "$trash" </dev/null >/dev/null 2>&1 &
   else
     [[ -n $dev ]] && simctl_quiet shutdown $dev
     release_lock
@@ -102,14 +107,23 @@ pick=(plain or supported or [None])[-1]
 print((rt or {}).get("identifier",""), (pick or {}).get("identifier",""))')"
   [[ -n $RUNTIME && -n $DEVTYPE ]] || { echo "::error::No iOS $SDKVER simulator runtime / iPhone device type installed"; exit 1; }
   # One simulator test run per machine at a time: booting several fresh simulators at once on a busy Mac
-  # can take forever. Builds still run in parallel; only this phase is serialized (mkdir is atomic).
+  # can take forever. Builds still run in parallel; only this phase is serialized (lock taken by atomic rename).
   # $LOCK/info records the holder (pid, the runner process that started it, start time, deadline, run URL)
   # in one line, so a lock left behind by a dead or orphaned job is recognised and removed instead of
   # blocking everyone for 30 min.
   mkdir -p ${LOCK:h}
+  # Acquire with rename(2): our lock dir is prepared with its info inside and renamed into place in one
+  # step. rename fails while another non-empty lock dir exists (and replaces an empty one, which is never a
+  # live lock), so a lock is never seen without its info. (mv would move a dir *into* an existing one.)
+  rename_dir() { perl -e 'rename $ARGV[0], $ARGV[1] or exit 1' "$1" "$2"; }
+  run_url="local run"
+  [[ -n ${GITHUB_RUN_ID:-} ]] && run_url="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/$GITHUB_RUN_ID"
+  parent_field=-; (( PPID > 1 )) && parent_field=$PPID
+  NEW=$LOCK.new.$$; rm -rf $NEW; mkdir $NEW
   waited=0
   while :; do
-  until mkdir $LOCK 2>/dev/null; do
+    print -r -- "$$ $parent_field $EPOCHSECONDS $(( EPOCHSECONDS + TEST_TIMEOUT + LOCK_MARGIN )) $run_url" > $NEW/info
+    rename_dir $NEW $LOCK && break
     read -r holder parent started deadline run <<< "$(cat $LOCK/info 2>/dev/null)"   # one consistent snapshot
     [[ -z ${started:-} ]] && started=$(stat -f %m $LOCK 2>/dev/null || echo $EPOCHSECONDS)   # info never written
     age=$(( EPOCHSECONDS - started ))
@@ -124,35 +138,24 @@ print((rt or {}).get("identifier",""), (pick or {}).get("identifier",""))')"
       # Take it atomically: re-read (the lock may have changed hands since the snapshot), rename (only one
       # waiter can win), make sure what we renamed is still the lock we judged, and only then delete it.
       [[ "$(cat $LOCK/info 2>/dev/null)" == "${holder:+$holder $parent $started $deadline $run}" ]] || { sleep 1; continue; }
-      if mv $LOCK $LOCK.stale.$$ 2>/dev/null; then
+      if rename_dir $LOCK $LOCK.stale.$$ 2>/dev/null; then
         moved=$(cat $LOCK.stale.$$/info 2>/dev/null || true)
         if [[ ${moved%% *} == ${holder:-} ]]; then
           echo "Removing stale simulator lock: $stale (${run:-unknown run})"; rm -rf $LOCK.stale.$$
         else
-          # Someone else's fresh lock: give it back by recreating the lock dir and moving the info in. (Never
-          # mv the directory onto $LOCK: if a third waiter created one meanwhile it would nest inside.) If the
-          # dir already exists again, that holder loses its entry; it will not remove anyone else's lock at exit.
-          if mkdir $LOCK 2>/dev/null; then mv $LOCK.stale.$$/info $LOCK/info 2>/dev/null; fi
-          rm -rf $LOCK.stale.$$; sleep 1
+          # Someone else's fresh lock: give it back with the same atomic rename; if yet another lock appeared
+          # meanwhile that holder loses its entry (it will not remove anyone else's lock at exit).
+          rename_dir $LOCK.stale.$$ $LOCK 2>/dev/null || rm -rf $LOCK.stale.$$
+          sleep 1
         fi
       fi
       continue
     fi
     (( waited % 60 == 0 )) && echo "Waiting for another job's simulator tests to finish (pid ${holder:-?}, ${run:-unknown run}, held for $(( age / 60 )) min)…"
     sleep 5; (( waited += 5 ))
-    (( waited > 1800 )) && { echo "::error::Waited 30 minutes for the simulator lock, held by pid ${holder:-?} (${run:-unknown run}). See docs/troubleshooting.md"; exit 1; }
+    (( waited > 1800 )) && { rm -rf $NEW; echo "::error::Waited 30 minutes for the simulator lock, held by pid ${holder:-?} (${run:-unknown run}). See docs/troubleshooting.md"; exit 1; }
   done
   LOCK_HELD=1
-  run_url="local run"
-  [[ -n ${GITHUB_RUN_ID:-} ]] && run_url="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/$GITHUB_RUN_ID"
-  parent_field=-; (( PPID > 1 )) && parent_field=$PPID
-  { print -r -- "$$ $parent_field $EPOCHSECONDS $(( EPOCHSECONDS + TEST_TIMEOUT + LOCK_MARGIN )) $run_url" > $LOCK/info.tmp \
-    && mv $LOCK/info.tmp $LOCK/info; } 2>/dev/null || true
-  # Make sure the lock is still ours: a waiter working from an old snapshot may have taken it in between.
-  info=$(cat $LOCK/info 2>/dev/null || true)
-  [[ ${info%% *} == $$ ]] && break
-  LOCK_HELD=''; echo "Lost the simulator lock while taking it; trying again"
-  done
   SIM_NAME="ci-${GITHUB_RUN_ID:-local}-$$"
   run_bg -t 120 -o $WORK/sim-udid.txt -e $WORK/simctl-create.log xcrun simctl create $SIM_NAME $DEVTYPE $RUNTIME \
     || { rc=$?; cat $WORK/simctl-create.log; echo "::error::simctl create failed (exit $rc)"; exit 1; }
