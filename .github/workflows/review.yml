@@ -1,0 +1,17 @@
+# This repo's own pull requests get the same AI review as the app repos, through the reusable workflow at
+# the same commit. The repo is public, so it runs on a GitHub-hosted runner — never on a self-hosted one
+# (see README: a self-hosted runner on a public repo lets any fork PR run code on your Mac) — and the
+# reusable workflow skips fork PRs. Needs the CLAUDE_CODE_OAUTH_TOKEN secret (scripts/set-claude-token.sh).
+name: AI review (this repo)
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+jobs:
+  review:
+    uses: ./.github/workflows/ai-review.yml
+    permissions:
+      contents: read
+      pull-requests: write
+    secrets: inherit
+    with:
+      runner: '"ubuntu-latest"'
