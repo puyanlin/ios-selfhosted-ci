@@ -11,9 +11,32 @@ ln -s $SPM_CACHE $DD/SourcePackages
 step() { echo "::group::$1"; }
 endstep() { echo "::endgroup::"; }
 # Full xcodebuild output goes to a file; on failure print the error lines and the tail.
+# xcodebuild runs in the background in its own process group: the caller's signal traps can stop it together
+# with everything it spawned (stop_xcodebuild), and XCB_TIMEOUT (seconds, optional) puts a hard time limit
+# on it. A foreground child would block zsh's traps until it exited on its own.
 xcb() {
-  local log=$WORK/$1.log; shift
-  if ! xcodebuild "$@" > $log 2>&1; then
+  local name=$1 log=$WORK/$1.log; shift
+  perl -MPOSIX -e 'setpgid(0,0); exec @ARGV' xcodebuild "$@" > $log 2>&1 &
+  XCB_PID=$!
+  local timed_out=$WORK/$name.timed-out
+  XCB_WATCHDOG=''
+  if (( ${XCB_TIMEOUT:-0} > 0 )); then
+    # One perl process (so it can be killed cleanly): sleep, flag the timeout, then TERM / KILL the group —
+    # after checking the pid still is our xcodebuild, in case this watchdog outlived the script.
+    perl -e '($t,$pg,$flag)=@ARGV; sleep $t; exit unless qx(ps -o command= -p $pg) =~ /xcodebuild/;
+             open F,">",$flag; close F; kill TERM => -$pg; sleep 15; kill KILL => -$pg' $XCB_TIMEOUT $XCB_PID $timed_out &
+    XCB_WATCHDOG=$!
+  fi
+  local rc=0; wait $XCB_PID || rc=$?
+  XCB_PID=''
+  [[ -n $XCB_WATCHDOG ]] && kill -KILL $XCB_WATCHDOG 2>/dev/null; XCB_WATCHDOG=''
+  if [[ -e $timed_out ]]; then
+    endstep
+    echo "::error::xcodebuild $name did not finish within $(( XCB_TIMEOUT / 60 )) minutes (hard time limit) and was stopped ($log)"
+    tail -30 $log
+    return 124
+  fi
+  if (( rc != 0 )); then
     endstep
     echo "::error::xcodebuild failed ($log)"
     grep -E ' error: |^error: |\*\* .* FAILED|Failing tests:|\) failed \(|No such file or directory|command not found' $log | sort -u | head -40 || true
@@ -21,6 +44,16 @@ xcb() {
     return 1
   fi
   tail -3 $log
+}
+# Stop the xcodebuild started by xcb (and its watchdog): TERM to its whole process group, up to 5 s to exit,
+# then KILL. Called from signal traps, where the pending `wait` in xcb has not returned yet.
+stop_xcodebuild() {
+  [[ -n ${XCB_WATCHDOG:-} ]] && kill -KILL $XCB_WATCHDOG 2>/dev/null; XCB_WATCHDOG=''
+  [[ -n ${XCB_PID:-} ]] || return 0
+  kill -TERM -- -$XCB_PID 2>/dev/null
+  local i; for i in {1..20}; do kill -0 $XCB_PID 2>/dev/null || break; sleep 0.25; done
+  kill -KILL -- -$XCB_PID 2>/dev/null
+  XCB_PID=''
 }
 
 source ${0:A:h}/xcode.sh
