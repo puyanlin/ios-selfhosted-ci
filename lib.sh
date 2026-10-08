@@ -33,9 +33,14 @@ run_bg() {
     BG_WATCHDOG=$!
   fi
   local rc=0; wait $BG_PID || rc=$?
-  BG_PID=''
   [[ -n $BG_WATCHDOG ]] && kill -KILL $BG_WATCHDOG 2>/dev/null; BG_WATCHDOG=''
-  [[ -e $flag ]] && { rm -f $flag; return 124; }
+  if [[ -e $flag ]]; then
+    # The leader honoured TERM, so wait returned before the watchdog's KILL: anything left in its group
+    # (a hung test runner, compiler, simctl helper) must go too.
+    kill -KILL -- -$BG_PID 2>/dev/null
+    rm -f $flag; BG_PID=''; return 124
+  fi
+  BG_PID=''
   return $rc
 }
 # Stop the command run_bg is waiting for (its whole process group: TERM, up to 5 s, then KILL) and its

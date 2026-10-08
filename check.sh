@@ -11,8 +11,10 @@ source ${0:A:h}/lib.sh
 # bounds the whole job — lock wait and simulator boot included — and its cancel runs the same cleanup.
 TEST_TIMEOUT=${TEST_TIMEOUT_SECONDS:-$(( ${TEST_TIMEOUT_MINUTES:-35} * 60 ))}
 LOCK=$HOME/actions-runners/_locks/simulator-tests
-# No live job can hold the lock longer than create + boot (time-boxed, ≤ 12 min) + the tests + cleanup.
-LOCK_MAX_AGE=$(( TEST_TIMEOUT + 900 ))
+# A holder records its own deadline in the lock: start + every time-boxed step it may run while holding it
+# (simctl create 120 s, boot 300 s, bootstatus 300 s, xcodebuild -list 300 s, its TEST_TIMEOUT, the 15 s
+# kill grace, and the time-boxed cleanup) — so waiters never judge a slow but healthy job by their own limits.
+LOCK_MARGIN=$(( 120 + 300 + 300 + 300 + 15 + 120 ))
 
 # --- cleanup --------------------------------------------------------------------------------------------
 # When GitHub cancels the job (new commit, timeout, runner lost), the runner sends this process SIGINT,
@@ -101,13 +103,13 @@ print((rt or {}).get("identifier",""), (pick or {}).get("identifier",""))')"
   [[ -n $RUNTIME && -n $DEVTYPE ]] || { echo "::error::No iOS $SDKVER simulator runtime / iPhone device type installed"; exit 1; }
   # One simulator test run per machine at a time: booting several fresh simulators at once on a busy Mac
   # can take forever. Builds still run in parallel; only this phase is serialized (mkdir is atomic).
-  # $LOCK/info records the holder (pid, the runner process that started it, start time, run URL) in one
-  # line, so a lock left behind by a dead or orphaned job is recognised and removed instead of blocking
-  # everyone for 30 min.
+  # $LOCK/info records the holder (pid, the runner process that started it, start time, deadline, run URL)
+  # in one line, so a lock left behind by a dead or orphaned job is recognised and removed instead of
+  # blocking everyone for 30 min.
   mkdir -p ${LOCK:h}
   waited=0
   until mkdir $LOCK 2>/dev/null; do
-    read -r holder parent started run <<< "$(cat $LOCK/info 2>/dev/null)"   # one consistent snapshot
+    read -r holder parent started deadline run <<< "$(cat $LOCK/info 2>/dev/null)"   # one consistent snapshot
     [[ -z ${started:-} ]] && started=$(stat -f %m $LOCK 2>/dev/null || echo $EPOCHSECONDS)   # info never written
     age=$(( EPOCHSECONDS - started ))
     stale=''
@@ -115,7 +117,7 @@ print((rt or {}).get("identifier",""), (pick or {}).get("identifier",""))')"
     elif ! kill -0 $holder 2>/dev/null; then stale="pid $holder is gone"
     elif [[ $(ps -o command= -p $holder 2>/dev/null) != *check.sh* ]]; then stale="pid $holder is no longer check.sh"
     elif [[ ${parent:--} != - ]] && ! kill -0 $parent 2>/dev/null; then stale="the runner process that started pid $holder is gone"
-    elif (( age > LOCK_MAX_AGE )); then stale="held for $(( age / 60 )) min, longer than any test run can take"
+    elif (( EPOCHSECONDS > ${deadline:-$(( started + TEST_TIMEOUT + LOCK_MARGIN ))} )); then stale="held for $(( age / 60 )) min, past the deadline the holder recorded"
     fi
     if [[ -n $stale ]]; then
       # Take it atomically: rename first (only one waiter can win), then make sure what we renamed is still
@@ -125,8 +127,11 @@ print((rt or {}).get("identifier",""), (pick or {}).get("identifier",""))')"
         if [[ ${moved%% *} == ${holder:-} ]]; then
           echo "Removing stale simulator lock: $stale (${run:-unknown run})"; rm -rf $LOCK.stale.$$
         else
-          mv $LOCK.stale.$$ $LOCK 2>/dev/null || rm -rf $LOCK.stale.$$   # someone else's fresh lock: give it back
-          sleep 1
+          # Someone else's fresh lock: give it back by recreating the lock dir and moving the info in. (Never
+          # mv the directory onto $LOCK: if a third waiter created one meanwhile it would nest inside.) If the
+          # dir already exists again, that holder loses its entry; it will not remove anyone else's lock at exit.
+          if mkdir $LOCK 2>/dev/null; then mv $LOCK.stale.$$/info $LOCK/info 2>/dev/null; fi
+          rm -rf $LOCK.stale.$$; sleep 1
         fi
       fi
       continue
@@ -139,7 +144,8 @@ print((rt or {}).get("identifier",""), (pick or {}).get("identifier",""))')"
   run_url="local run"
   [[ -n ${GITHUB_RUN_ID:-} ]] && run_url="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/$GITHUB_RUN_ID"
   parent_field=-; (( PPID > 1 )) && parent_field=$PPID
-  print -r -- "$$ $parent_field $EPOCHSECONDS $run_url" > $LOCK/info.tmp && mv $LOCK/info.tmp $LOCK/info
+  print -r -- "$$ $parent_field $EPOCHSECONDS $(( EPOCHSECONDS + TEST_TIMEOUT + LOCK_MARGIN )) $run_url" > $LOCK/info.tmp \
+    && mv $LOCK/info.tmp $LOCK/info
   SIM_NAME="ci-${GITHUB_RUN_ID:-local}-$$"
   run_bg -t 120 -o $WORK/sim-udid.txt -e $WORK/simctl-create.log xcrun simctl create $SIM_NAME $DEVTYPE $RUNTIME \
     || { rc=$?; cat $WORK/simctl-create.log; echo "::error::simctl create failed (exit $rc)"; exit 1; }
