@@ -7,19 +7,22 @@ character, `[...]` one of, a leading `!` excludes; the last matching pattern dec
 at least one changed file matches PATHS (or PATHS is empty) and is not matched by PATHS_IGNORE.
 
 Writes build=true|false to $GITHUB_OUTPUT. It never fails the job: when the changed files can't be
-determined (not a pull_request event, no merge commit, git error) it answers build=true. A skipped build
+determined (not a pull_request event, HEAD isn't this PR's merge commit, git error) it answers build=true. A skipped build
 still ends the job successfully, so a required "PR check" never blocks a PR that doesn't touch the app.
 
-The changed files come from the merge commit actions/checkout checks out for pull_request events: its first
-parent is the base branch, so `git diff parent HEAD` is exactly what the PR changes. The parent is fetched
-on its own (depth 1); objects the shallow checkout already has are not downloaded again.
+The changed files come from the merge commit actions/checkout checks out for pull_request events
+(refs/pull/N/merge): its parents are [base, PR head], so `git diff base HEAD` is exactly what the PR
+changes. HEAD only counts as that commit when its second parent is the head SHA in the event payload —
+a checkout of the PR head (which may itself be a "merge main into feature" commit) or of the base branch
+builds. The base parent is fetched on its own (depth 1); objects already in the checkout aren't re-sent.
 """
+import json
 import os
 import re
 import subprocess
 import sys
 
-PR_EVENTS = {"pull_request", "pull_request_target"}
+PR_EVENT = "pull_request"  # pull_request_target checks out the base branch: no merge commit to diff
 
 
 def patterns(text):
@@ -84,10 +87,15 @@ def git(*args):
     return subprocess.run(["git", *args], check=True, capture_output=True, text=True, timeout=120).stdout
 
 
+def pr_head_sha():
+    with open(os.environ["GITHUB_EVENT_PATH"]) as fh:
+        return json.load(fh)["pull_request"]["head"]["sha"]
+
+
 def changed_files():
     parents = [line.split()[1] for line in git("cat-file", "-p", "HEAD").splitlines() if line.startswith("parent ")]
-    if len(parents) != 2:
-        raise RuntimeError("HEAD is not the pull request's merge commit (custom checkout ref?)")
+    if len(parents) != 2 or parents[1] != pr_head_sha():
+        raise RuntimeError("HEAD is not this pull request's merge commit (custom checkout ref?)")
     base = parents[0]
     git("fetch", "--quiet", "--no-tags", "--depth=1", "origin", base)
     out = git("diff", "--name-only", "--no-renames", "-z", base, "HEAD")
@@ -107,7 +115,7 @@ def main():
     if not paths and not ignore:
         return emit(True)
     event = os.environ.get("GITHUB_EVENT_NAME", "")
-    if event not in PR_EVENTS:
+    if event != PR_EVENT:
         print(f"{event or 'this'} event: path filters only apply to pull requests — building")
         return emit(True)
     try:

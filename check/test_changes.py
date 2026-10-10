@@ -1,4 +1,5 @@
 """python3 -m unittest discover -s check   (no dependencies)"""
+import json
 import os
 import shutil
 import subprocess
@@ -107,6 +108,7 @@ class EndToEndTests(unittest.TestCase):
         g("checkout", "-q", "-b", "merge", cwd=origin)
         g("merge", "-q", "--no-ff", "-m", "merge", "feature", cwd=origin)
         g("checkout", "-q", "main", cwd=origin)
+        self.head_sha = subprocess.run(["git", "rev-parse", "feature"], cwd=origin, check=True, capture_output=True, text=True).stdout.strip()
         # like actions/checkout: a depth-1 fetch of the merge ref
         os.makedirs(work)
         g("init", "-q", cwd=work)
@@ -115,10 +117,11 @@ class EndToEndTests(unittest.TestCase):
         g("checkout", "-q", "refs/remotes/pull/1/merge", cwd=work)
         self.work = work
 
-    def run_filter(self, event="pull_request", **env):
-        out = os.path.join(self.dir, "out")
+    def run_filter(self, event="pull_request", head=None, **env):
+        out, payload = os.path.join(self.dir, "out"), os.path.join(self.dir, "event.json")
         write(out, "")
-        e = {**os.environ, "GITHUB_EVENT_NAME": event, "GITHUB_OUTPUT": out, "GITHUB_STEP_SUMMARY": os.devnull, **env}
+        write(payload, json.dumps({"pull_request": {"head": {"sha": head or self.head_sha}}}))
+        e = {**os.environ, "GITHUB_EVENT_NAME": event, "GITHUB_EVENT_PATH": payload, "GITHUB_OUTPUT": out, "GITHUB_STEP_SUMMARY": os.devnull, **env}
         r = subprocess.run([sys.executable, SCRIPT], cwd=self.work, env=e, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         return read(out).strip()
@@ -134,6 +137,11 @@ class EndToEndTests(unittest.TestCase):
     def test_always_builds_without_filters_or_outside_pull_requests(self):
         self.assertEqual(self.run_filter(), "build=true")
         self.assertEqual(self.run_filter(event="workflow_dispatch", PATHS_IGNORE="web/**"), "build=true")
+
+    def test_builds_when_head_is_not_this_prs_merge_commit(self):
+        # e.g. a checkout of the PR head that is itself a merge, or pull_request_target's base branch tip
+        self.assertEqual(self.run_filter(head="0" * 40, PATHS_IGNORE="web/**"), "build=true")
+        self.assertEqual(self.run_filter(event="pull_request_target", PATHS_IGNORE="web/**"), "build=true")
 
     def test_builds_when_the_changed_files_cannot_be_determined(self):
         subprocess.run(["git", "remote", "set-url", "origin", "file:///nonexistent"], cwd=self.work, check=True)
