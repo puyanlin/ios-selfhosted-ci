@@ -120,6 +120,8 @@ scripts/bootstrap-repo.sh MyApp --no-ruleset
 # PR check 只編譯（test 暫時壞掉時）／跳過部分 test：
 scripts/bootstrap-repo.sh MyApp --no-test
 scripts/bootstrap-repo.sh MyApp --skip-testing "MyAppTests/SlowTests"
+# 同一個 repo 還有網站、Android（monorepo）：PR 沒改到 iOS 就不編譯（跳過也算通過，不會卡住必要檢查）：
+scripts/bootstrap-repo.sh MyApp --paths-ignore "web/** android/** **/*.md"
 ```
 
 已經設好的 repo 重跑也安全：只會更新有變動的呼叫檔，不會重複建立 ruleset。在設定檔設 `XCODE_BETA_APP`，TestFlight 的 Xcode 選單就會多出 beta 選項。

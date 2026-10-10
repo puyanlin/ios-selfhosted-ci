@@ -12,6 +12,8 @@
 #   --branch       extra long-lived branches that also get the workflows and the ruleset
 #   --no-test        PR check only builds (the default runs unit tests; UI tests are always skipped)
 #   --skip-testing "Target/Suite ..."  extra tests to skip in the PR check
+#   --paths-ignore "web/** android/** **/*.md"  skip the PR check's build when a PR only changes these (quote them)
+#   --paths "App/** *.xcodeproj/**"            build only when a PR changes one of these (same pattern syntax as on.paths)
 #   --no-ruleset     don't create the "PR check must pass" ruleset (e.g. the default branch doesn't build yet)
 #   --team TEAMID     Apple Developer Team ID of this app when it isn't TEAM_ID from the config (e.g. a company team)
 #   --signing manual  TestFlight signs with your own Apple Distribution identity + App Store profiles
@@ -22,7 +24,7 @@ source ${0:A:h}/_config.sh
 TEMPLATES=${0:A:h}/../templates
 
 repo=${1:?usage: bootstrap-repo.sh <repo> [options]}; shift
-scheme=""; project=""; destination=""; language=$REVIEW_LANGUAGE; branches=(); workflows=(pr-check testflight ai-review); provider=$REVIEW_PROVIDER; want_ruleset=1; no_test=0; skip_testing=""; signing=""
+scheme=""; project=""; destination=""; language=$REVIEW_LANGUAGE; branches=(); workflows=(pr-check testflight ai-review); provider=$REVIEW_PROVIDER; want_ruleset=1; no_test=0; skip_testing=""; signing=""; paths=""; paths_ignore=""
 while (( $# )); do
   case $1 in
     --scheme) scheme=$2; shift 2 ;;
@@ -37,6 +39,8 @@ while (( $# )); do
     --no-ruleset) want_ruleset=0; shift ;;
     --no-test) no_test=1; shift ;;
     --skip-testing) skip_testing=$2; shift 2 ;;
+    --paths) paths=$2; shift 2 ;;
+    --paths-ignore) paths_ignore=$2; shift 2 ;;
     *) echo "unknown option: $1"; exit 1 ;;
   esac
 done
@@ -79,6 +83,12 @@ if [[ -z $scheme || -z $project ]]; then
   fi
 fi
 
+yaml_block() {  # yaml_block <key> "<space-separated patterns>" → a literal block for the with: section (no trailing newline)
+  local out="      $1: |" p
+  for p in ${=2}; do out+=$'\n'"        $p"; done
+  print -rn -- "$out"
+}
+
 render() {  # render <template>
   local with="" review_with=""
   [[ -n $project ]] && with+="      project: $project"$'\n'
@@ -86,6 +96,8 @@ render() {  # render <template>
   [[ $1 == testflight && -n $signing ]] && with+="      signing: $signing"$'\n'
   (( no_test )) && [[ $1 == pr-check ]] && with+="      test: false"$'\n'
   [[ $1 == pr-check && -n $skip_testing ]] && with+="      skip-testing: $skip_testing"$'\n'
+  [[ $1 == pr-check && -n $paths ]] && with+="$(yaml_block paths "$paths")"$'\n'
+  [[ $1 == pr-check && -n $paths_ignore ]] && with+="$(yaml_block paths-ignore "$paths_ignore")"$'\n'
   if [[ $1 == ai-review ]]; then
     if [[ $provider == claude ]]; then   # local installs only matter on the self-hosted claude-review runner
       local c=$(command -v claude || true) b=$(command -v bun || true)
