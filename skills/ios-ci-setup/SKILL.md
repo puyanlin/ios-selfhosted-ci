@@ -40,6 +40,7 @@ scripts/bootstrap-repo.sh <repo> [options]
 | `--branch name` | Extra long-lived branches that also get the workflows and the ruleset |
 | `--destination device` | PR check builds for device (unsigned), e.g. an SDK lacks an arm64 simulator slice |
 | `--no-test` / `--skip-testing "T/Suite"` | Unit tests are broken for now, or some need skipping (UI tests are always skipped) |
+| `--paths-ignore "web/** android/**"` / `--paths "App/**"` | The repo also holds non-iOS code (website, Android, docs): skip the PR check's build when a PR doesn't touch the app. The skipped check still passes |
 | `--no-testflight` | The app belongs to an App Store Connect team you can't sign for |
 | `--no-ruleset` | The default branch doesn't build yet |
 | `--review-language "…"` | Override the review language from the config |

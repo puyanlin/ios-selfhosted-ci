@@ -12,6 +12,8 @@ on:
       skip-ui-tests: { type: boolean, default: true }
       skip-testing: { type: string, default: '', description: 'Extra space-separated -skip-testing identifiers' }
       xcode: { type: string, default: '', description: 'Xcode path or version (27.1, 27); empty = .xcode-version, else the runner default' }
+      paths: { type: string, default: '', description: "Only build when the PR changes a file matching one of these patterns (newline-separated, GitHub's on.pull_request.paths syntax). Empty = every PR. A skipped build still passes, so the required check never blocks" }
+      paths-ignore: { type: string, default: '', description: 'Skip the build when every changed file matches one of these patterns, e.g. web/** android/** **/*.md on separate lines' }
       runner-label: { type: string, default: macos-xcode }
 jobs:
   build:
@@ -33,3 +35,5 @@ jobs:
           skip-ui-tests: ${{ inputs.skip-ui-tests }}
           skip-testing: ${{ inputs.skip-testing }}
           xcode: ${{ inputs.xcode }}
+          paths: ${{ inputs.paths }}
+          paths-ignore: ${{ inputs.paths-ignore }}

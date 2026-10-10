@@ -122,6 +122,8 @@ scripts/bootstrap-repo.sh MyApp --no-ruleset
 # PR check builds only (tests are broken for now) / skip some tests:
 scripts/bootstrap-repo.sh MyApp --no-test
 scripts/bootstrap-repo.sh MyApp --skip-testing "MyAppTests/SlowTests"
+# a monorepo (website, Android app next to the iOS app): skip the iOS build when a PR doesn't touch it:
+scripts/bootstrap-repo.sh MyApp --paths-ignore "web/** android/** **/*.md"
 ```
 
 Re-running it on a repo that is already set up is safe: it only updates changed caller files and never duplicates the ruleset. Set `XCODE_BETA_APP` in the config to offer a beta Xcode in the TestFlight menu.
@@ -213,6 +215,8 @@ Install several Xcodes side by side (e.g. with [xcodes](https://github.com/Xcode
 | | `test` | `true` | Unit tests on an iPhone simulator (ad-hoc signed test host); falls back to a build when the scheme has no tests |
 | | `skip-ui-tests` | `true` | Skip every `*UITests` target |
 | | `skip-testing` | — | Extra `-skip-testing` identifiers, space separated |
+| | `paths` | — | Build only when the PR changes a matching file. Newline-separated, [GitHub's `on.paths` syntax](https://docs.github.com/actions/reference/workflows-and-actions/workflow-syntax#filter-pattern-cheat-sheet) (`*`, `**`, `?`, `+`, `[]`, `!` excludes, last match wins) |
+| | `paths-ignore` | — | Skip the build when every changed file matches, e.g. `web/**`, `android/**`, `**/*.md`. A skipped check still **passes**, so the required check never blocks; any doubt (other events, git error) builds |
 | testflight | `scheme`, `team-id` | — | |
 | | `branch` | dispatched ref | Any branch/tag/SHA |
 | | `upload` | `true` | `false` = archive + export only |

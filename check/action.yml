@@ -20,13 +20,30 @@ inputs:
   xcode:
     description: Xcode path or version (27.1, 27); empty = the repo's .xcode-version, else the runner default
     default: ''
+  paths:
+    description: "Only build when the pull request changes a file matching one of these patterns: newline-separated, GitHub's on.pull_request.paths syntax (*, **, ?, +, [...], a leading ! excludes, the last match wins). Empty (default) = every pull request. A skipped build still passes the check, so a required PR check never blocks a pull request that doesn't touch the app. Needs the default pull_request checkout (the merge commit); other events always build"
+    default: ''
+  paths-ignore:
+    description: "Skip the build when every changed file matches one of these patterns (same syntax), e.g. web/** android/** **/*.md on separate lines. Can be combined with paths"
+    default: ''
   test-timeout-minutes:
     description: "Hard time limit for the test phase itself (xcodebuild test), counted from when the tests start; a hung xcodebuild is stopped and cleaned up by check.sh even if no cancel ever arrives. The job's timeout-minutes (40 in the reusable workflow) still bounds the whole job, lock wait and simulator boot included; its cancel runs the same cleanup"
     default: '35'
 runs:
   using: composite
   steps:
-    - shell: zsh {0}
+    # Which files does the pull request change? build=false only when none of them needs the app built;
+    # any doubt (other events, custom checkout, git error) answers build=true. Never fails the job.
+    - id: changes
+      if: inputs.paths != '' || inputs.paths-ignore != ''
+      continue-on-error: true
+      shell: bash
+      env:
+        PATHS: ${{ inputs.paths }}
+        PATHS_IGNORE: ${{ inputs.paths-ignore }}
+      run: /usr/bin/python3 "${{ github.action_path }}/changes.py"
+    - if: steps.changes.outputs.build != 'false'
+      shell: zsh {0}
       env:
         SCHEME: ${{ inputs.scheme }}
         PROJECT: ${{ inputs.project }}
