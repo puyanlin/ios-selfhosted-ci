@@ -22,7 +22,7 @@ jobs:
     concurrency:
       group: pr-check-${{ github.repository }}-${{ github.head_ref || github.ref }}
       cancel-in-progress: true
-    timeout-minutes: 40
+    timeout-minutes: ${{ inputs.mac-catalyst && 55 || 40 }}   # the Mac Catalyst build comes after the tests
     permissions:
       contents: read
     steps:
