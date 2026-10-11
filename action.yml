@@ -31,6 +31,9 @@ inputs:
   xcode:
     description: Xcode path or version (27.1, 27); empty = the repo's .xcode-version, else the runner default
     default: ''
+  platform:
+    description: "'iOS' (default) or 'macCatalyst' — archive the Mac Catalyst app and upload it to the app's macOS platform in App Store Connect (cloud signing only)"
+    default: iOS
 outputs:
   archive-path:
     value: ${{ steps.run.outputs.archive-path }}
@@ -51,6 +54,7 @@ runs:
         TEAM_ID: ${{ inputs.team-id }}
         XCODE_APP: ${{ inputs.xcode }}
         SIGNING_STYLE: ${{ inputs.signing }}
+        PLATFORM: ${{ inputs.platform }}
       run: ${{ github.action_path }}/testflight.sh
     - if: failure()
       uses: actions/upload-artifact@v4

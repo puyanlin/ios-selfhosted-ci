@@ -16,6 +16,16 @@ security unlock-keychain -p "$(cat $HOME/.appstoreconnect/ci-keychain.pass)" $CI
 SIGNING=${SIGNING_STYLE:-cloud}
 typeset -A PROFILES; CERT=""
 
+# Platform: the iOS app, or the same target built as a Mac Catalyst app (uploaded to the app's macOS platform;
+# exports a .pkg). Mac App Store signing also needs an installer identity, which cloud signing provides.
+case ${PLATFORM:-iOS} in
+  iOS|ios)         PLATFORM=iOS; ARCHIVE_DEST=generic/platform=iOS; PACKAGE=ipa; SUFFIX='' ;;
+  macCatalyst|mac-catalyst|maccatalyst)
+                   PLATFORM=macCatalyst; ARCHIVE_DEST='generic/platform=macOS,variant=Mac Catalyst'; PACKAGE=pkg; SUFFIX=-mac
+                   [[ $SIGNING == cloud ]] || { echo "::error::platform macCatalyst supports cloud signing only for now"; exit 1; } ;;
+  *)               echo "::error::platform must be iOS or macCatalyst (got '$PLATFORM')"; exit 1 ;;
+esac
+
 # Upload auth: per-team file first (ci-<TEAMID>.env), then the default ci.env.
 ASC_KEY_ID=""; ASC_ISSUER_ID=""; ASC_APPLE_ID=""
 for env in $HOME/.appstoreconnect/ci-$TEAM_ID.env $HOME/.appstoreconnect/ci.env; do
@@ -35,7 +45,7 @@ fi
 
 BUILD=${BUILD_NUMBER:-$(date +%y%m%d)01}
 [[ $BUILD =~ '^[0-9]+(\.[0-9]+)*$' ]] || { echo "::error::build-number must be numeric (got '$BUILD')"; exit 1; }
-ARCHIVE=$HOME/Library/Developer/Xcode/Archives/$(date +%F)/$SCHEME-$BUILD-ci-$GITHUB_RUN_ID.xcarchive
+ARCHIVE=$HOME/Library/Developer/Xcode/Archives/$(date +%F)/$SCHEME-$BUILD$SUFFIX-ci-$GITHUB_RUN_ID.xcarchive
 
 if [[ $SIGNING == manual ]]; then
   # Hand xcodebuild every App Store profile of the team that uses one Distribution identity; each target
@@ -57,15 +67,15 @@ if [[ $SIGNING == manual ]]; then
   endstep
   step "Archive $SCHEME ($PROJECT, build $BUILD, manual signing)"
   xcb archive archive "${PROJ_ARGS[@]}" -scheme "$SCHEME" -configuration $CONFIGURATION \
-    -destination generic/platform=iOS -archivePath $ARCHIVE -derivedDataPath $DD \
+    -destination "$ARCHIVE_DEST" -archivePath $ARCHIVE -derivedDataPath $DD \
     CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=$TEAM_ID CODE_SIGN_IDENTITY=$CERT "${PROFILE_ARGS[@]}" \
     CURRENT_PROJECT_VERSION=$BUILD OTHER_CODE_SIGN_FLAGS="--keychain $CI_KC"
   endstep
 else
   [[ -n $ASC_KEY_ID ]] || { echo "::error::Cloud signing needs an App Store Connect API key (Admin)"; exit 1; }
-  step "Archive $SCHEME ($PROJECT, build $BUILD)"
+  step "Archive $SCHEME ($PROJECT, build $BUILD, $PLATFORM)"
   xcb archive archive "${PROJ_ARGS[@]}" -scheme "$SCHEME" -configuration $CONFIGURATION \
-    -destination generic/platform=iOS -archivePath $ARCHIVE -derivedDataPath $DD \
+    -destination "$ARCHIVE_DEST" -archivePath $ARCHIVE -derivedDataPath $DD \
     -allowProvisioningUpdates "${AUTH[@]}" \
     CURRENT_PROJECT_VERSION=$BUILD OTHER_CODE_SIGN_FLAGS="--keychain $CI_KC"
   endstep
@@ -169,13 +179,13 @@ fi
 echo "archive-path=$ARCHIVE" >> $GITHUB_OUTPUT
 echo "build-number=$FINAL" >> $GITHUB_OUTPUT
 {
-  echo "### $SCHEME $VERSION ($FINAL)"
+  echo "### $SCHEME $VERSION ($FINAL)$([[ $PLATFORM == macCatalyst ]] && echo ' — Mac Catalyst')"
   echo "- Bundle ID: \`$BUNDLE_ID\`"
   echo "- Commit: \`$(git rev-parse --short HEAD)\` ($BRANCH_LABEL)"
   if [[ $DEST == upload ]]; then
     echo "- ✅ Uploaded to App Store Connect; it shows up in TestFlight once processed$([[ $INTERNAL == true ]] && echo ' (internal testing only)')"
   else
-    echo "- 🧪 Dry run: exported the .ipa, nothing uploaded"
+    echo "- 🧪 Dry run: exported the .$PACKAGE, nothing uploaded"
   fi
   echo "- Archive (visible in Xcode Organizer): \`$ARCHIVE\`"
 } >> $GITHUB_STEP_SUMMARY

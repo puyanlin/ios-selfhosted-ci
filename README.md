@@ -213,6 +213,7 @@ Install several Xcodes side by side (e.g. with [xcodes](https://github.com/Xcode
 | | `project` | auto | `.xcodeproj`/`.xcworkspace` at the root |
 | | `destination` | `simulator` | `device` = unsigned device build |
 | | `test` | `true` | Unit tests on an iPhone simulator (ad-hoc signed test host); falls back to a build when the scheme has no tests |
+| | `mac-catalyst` | `false` | `true` = also build the Mac Catalyst version (unsigned, no tests) after the iOS build/tests |
 | | `skip-ui-tests` | `true` | Skip every `*UITests` target |
 | | `skip-testing` | — | Extra `-skip-testing` identifiers, space separated |
 | | `paths` | — | Build only when the PR changes a matching file. Newline-separated, [GitHub's `on.paths` syntax](https://docs.github.com/actions/reference/workflows-and-actions/workflow-syntax#filter-pattern-cheat-sheet) (`*`, `**`, `?`, `+`, `[]`, `!` excludes, last match wins) |
@@ -224,6 +225,7 @@ Install several Xcodes side by side (e.g. with [xcodes](https://github.com/Xcode
 | | `build-number` | `YYMMDD01` | Numeric only |
 | | `fastlane-lane` | — | Run `bundle exec fastlane <lane>` instead |
 | | `signing` | `cloud` | `manual` = your Distribution identity + App Store profiles ([docs](docs/manual-signing.md)) |
+| | `platform` | `iOS` | `macCatalyst` = archive the Mac Catalyst app and upload it to the app's macOS platform (cloud signing; exports a `.pkg`). Add the macOS platform to the app in App Store Connect first |
 | ai-review | `provider` | `claude` | `claude`, `codex` or `gemini` |
 | | `model` | provider default | e.g. `claude-opus-5-5` |
 | | `runner` | `auto` | `auto` = your Mac's `claude-review` runner |

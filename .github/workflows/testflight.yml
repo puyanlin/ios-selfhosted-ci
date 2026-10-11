@@ -12,6 +12,7 @@ on:
       xcode: { type: string, default: '', description: 'Xcode path or version (27.1, 27); empty/default = .xcode-version, else the runner default' }
       build-number: { type: string, default: '' }
       signing: { type: string, default: cloud, description: 'cloud (Admin key) or manual (Distribution identity + profiles; App Manager key or Apple ID)' }
+      platform: { type: string, default: iOS, description: 'iOS, or macCatalyst to archive and upload the Mac Catalyst app (cloud signing)' }
       fastlane-lane: { type: string, default: '', description: 'e.g. beta — runs `bundle exec fastlane <lane>` instead of the built-in archive/upload' }
       runner-label: { type: string, default: macos-xcode }
 jobs:
@@ -35,6 +36,7 @@ jobs:
           upload: ${{ inputs.upload }}
           xcode: ${{ inputs.xcode }}
           signing: ${{ inputs.signing }}
+          platform: ${{ inputs.platform }}
       - if: ${{ inputs.fastlane-lane != '' }}
         uses: puyanlin/ios-selfhosted-ci/fastlane@v1
         with:

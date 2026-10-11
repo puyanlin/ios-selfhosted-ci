@@ -209,4 +209,12 @@ else
   xcb build build "${COMMON[@]}" -destination 'generic/platform=iOS Simulator'
   endstep; RESULT="build passed"
 fi
+if [[ ${BUILD_MAC_CATALYST:-false} == true ]]; then
+  # The Mac Catalyst app is the same scheme for another platform: prove it compiles too (unsigned like the
+  # iOS build; packages without a Mac Catalyst slice need a platform filter in the app target).
+  # Runs after the simulator part, so the simulator and its lock were already handed back.
+  step "Build $SCHEME (Mac Catalyst, unsigned)"
+  xcb build-mac build "${COMMON[@]}" -destination 'generic/platform=macOS,variant=Mac Catalyst'
+  endstep; RESULT+=" + Mac Catalyst build passed"
+fi
 echo "### ✅ $SCHEME $RESULT ($(git rev-parse --short HEAD))" >> $GITHUB_STEP_SUMMARY
