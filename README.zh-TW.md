@@ -147,6 +147,9 @@ GitHub 個人帳號沒有「全帳號共用」的 Actions secret，所以每個 
   gh workflow run testflight.yml -R you/MyApp -f branch=feature/x          # 終端機
   gh workflow run testflight.yml -R you/MyApp -f branch=main -f upload=false  # 試跑
   ```
+- **Mac Catalyst App**：同一個 target 開了 Mac Catalyst 的話，
+  - PR check 加 `mac-catalyst: true`：iOS 編譯／測試完再編一次 Mac 版（不簽章、不跑測試）。沒有 Mac 版的套件（例如 AdMob）要在 target 裡設成只連結 iOS。
+  - TestFlight 加 `platform: macCatalyst`：打包 Mac 版、雲端簽章、上傳到 App Store Connect 的 macOS 平台（匯出 `.pkg`；需先在 App Store Connect 替 App 加上 macOS 平台）。目前只支援雲端簽章。
 - **修改流程**：改這裡的 `.github/workflows/*`，再 `git tag -f v1 && git push -f origin v1`，所有 app 下次執行就會用新版。（想要不可變的版本，可以改成釘在 commit SHA。）
 
 ## 上架 App Store（用 asc）

@@ -1,5 +1,5 @@
 name: iOS PR check
-description: Unsigned build (simulator or device) on a self-hosted Mac; optionally run tests on a simulator.
+description: Unsigned build (simulator or device) on a self-hosted Mac; optionally run tests on a simulator and build the Mac Catalyst version.
 inputs:
   scheme:
     required: true
@@ -8,6 +8,9 @@ inputs:
   test:
     description: "'true' (default) runs the scheme's unit tests on an iPhone simulator (falls back to a build when the scheme has no tests); 'false' only builds"
     default: 'true'
+  mac-catalyst:
+    description: "'true' also builds the Mac Catalyst version (unsigned, no tests) after the iOS build/tests; for apps with Mac Catalyst enabled"
+    default: 'false'
   skip-ui-tests:
     description: "'true' (default) skips every *UITests target when running tests"
     default: 'true'
@@ -49,6 +52,7 @@ runs:
         PROJECT: ${{ inputs.project }}
         RUN_TESTS: ${{ inputs.test }}
         BUILD_FOR: ${{ inputs.destination }}
+        BUILD_MAC_CATALYST: ${{ inputs.mac-catalyst }}
         SKIP_UI_TESTS: ${{ inputs.skip-ui-tests }}
         SKIP_TESTING: ${{ inputs.skip-testing }}
         XCODE_APP: ${{ inputs.xcode }}
