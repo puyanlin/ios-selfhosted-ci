@@ -18,7 +18,7 @@ on:
 jobs:
   testflight:
     runs-on: [self-hosted, "${{ inputs.runner-label }}"]
-    concurrency: testflight-${{ github.repository }}-${{ inputs.branch || github.ref_name }}
+    concurrency: testflight-${{ github.repository }}-${{ inputs.branch || github.ref_name }}-${{ inputs.platform }}
     timeout-minutes: 60
     permissions:
       contents: read

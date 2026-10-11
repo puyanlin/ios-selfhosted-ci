@@ -212,7 +212,11 @@ fi
 if [[ ${BUILD_MAC_CATALYST:-false} == true ]]; then
   # The Mac Catalyst app is the same scheme for another platform: prove it compiles too (unsigned like the
   # iOS build; packages without a Mac Catalyst slice need a platform filter in the app target).
-  # Runs after the simulator part, so the simulator and its lock were already handed back.
+  # It needs neither the simulator nor the lock: after passing tests both are still held, so hand them back
+  # first — other jobs shouldn't wait for this build, and the lock's recorded deadline doesn't cover it.
+  if [[ -n ${SIM:-} ]]; then
+    simctl_quiet shutdown $SIM; release_lock; simctl_quiet delete $SIM; SIM='' SIM_NAME=''
+  fi
   step "Build $SCHEME (Mac Catalyst, unsigned)"
   xcb build-mac build "${COMMON[@]}" -destination 'generic/platform=macOS,variant=Mac Catalyst'
   endstep; RESULT+=" + Mac Catalyst build passed"
