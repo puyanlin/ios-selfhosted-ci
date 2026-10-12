@@ -62,6 +62,8 @@ fails, show the user the error and fix it together; don't skip it.
 
 ## Changing the pipeline
 
-Every app repo calls the reusable workflows in ios-selfhosted-ci. After changing them, move the tag:
-`git tag -f v1 && git push -f origin v1`. If the checkout is public, never put personal data in it (Team ID,
+Every app repo calls the reusable workflows in ios-selfhosted-ci. After a change is merged to `main`, release it
+with `scripts/release.sh <x.y.z> <notes.md> "<title>"` (it tags, publishes the GitHub release and moves `v1`);
+`--draft` lists the commits to write the notes from. Don't just move `v1` by hand: the release history is how
+users see the project is maintained. If the checkout is public, never put personal data in it (Team ID,
 API keys, local paths, app names). Personal settings belong in the config file and in each repo's caller files.

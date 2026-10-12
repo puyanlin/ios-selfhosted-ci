@@ -149,7 +149,7 @@ Personal GitHub accounts have no account-wide Actions secrets, so each repo need
   gh workflow run testflight.yml -R you/MyApp -f branch=feature/x          # from a terminal
   gh workflow run testflight.yml -R you/MyApp -f branch=main -f upload=false  # dry run
   ```
-- **Change the pipeline** → edit `.github/workflows/*` here, then `git tag -f v1 && git push -f origin v1`. Every app picks it up on its next run. (Pin callers to a commit SHA instead of `v1` if you prefer immutable versions.)
+- **Change the pipeline** → edit `.github/workflows/*` here, merge to `main`, then release it: `scripts/release.sh 1.4.0 --draft` lists the commits since the last release; write the notes and run `scripts/release.sh 1.4.0 notes.md "Short title"`. It tags `v1.4.0`, publishes the GitHub release and moves `v1`, which every app picks up on its next run. (Pin callers to a commit SHA or a `vX.Y.Z` tag instead of `v1` if you prefer immutable versions.)
 - **Check a runner Mac** → `scripts/doctor.sh` shows the Xcodes, simulator runtimes, tools, signing and runners the jobs will see, and flags what's broken (a config path that no longer exists, a clone behind `v1`, low disk).
 
 ## More than one Mac

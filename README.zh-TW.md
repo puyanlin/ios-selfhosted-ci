@@ -150,7 +150,7 @@ GitHub 個人帳號沒有「全帳號共用」的 Actions secret，所以每個 
 - **Mac Catalyst App**：同一個 target 開了 Mac Catalyst 的話，
   - PR check 加 `mac-catalyst: true`：iOS 編譯／測試完再編一次 Mac 版（不簽章、不跑測試）。沒有 Mac 版的套件（例如 AdMob）要在 target 裡設成只連結 iOS。
   - TestFlight 加 `platform: macCatalyst`：打包 Mac 版、雲端簽章、上傳到 App Store Connect 的 macOS 平台（匯出 `.pkg`；需先在 App Store Connect 替 App 加上 macOS 平台）。目前只支援雲端簽章。
-- **修改流程**：改這裡的 `.github/workflows/*`，再 `git tag -f v1 && git push -f origin v1`，所有 app 下次執行就會用新版。（想要不可變的版本，可以改成釘在 commit SHA。）
+- **修改流程**：改這裡的 `.github/workflows/*`，合併到 `main` 後發版：`scripts/release.sh 1.4.0 --draft` 列出上次發版後的 commit，寫好 release notes 再跑 `scripts/release.sh 1.4.0 notes.md "簡短標題"`。它會打 `v1.4.0` tag、發布 GitHub release，並把 `v1` 移過去，所有 app 下次執行就會用新版。（想要不可變的版本，可以改成釘在 commit SHA 或 `vX.Y.Z` tag。）
 - **檢查 runner 的 Mac**：`scripts/doctor.sh` 會列出 job 實際會用到的 Xcode、模擬器 runtime、工具、簽章與 runner，並標出有問題的地方（設定檔裡的路徑已經不存在、clone 落後 `v1`、硬碟快滿）。
 
 ## 多台 Mac
