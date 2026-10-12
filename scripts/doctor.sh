@@ -19,7 +19,10 @@ probe() {
   local XCODE_APP=/Applications/Xcode.app XCODE_BETA_APP=
   [[ -f $cfg ]] && eval "$(grep -E '^XCODE_(BETA_)?APP=' $cfg)"
   xbuild() { /usr/libexec/PlistBuddy -c 'Print :ProductBuildVersion' $1/Contents/version.plist 2>/dev/null; }
-  ver() { command -v $1 >/dev/null || { echo missing; return; }; $1 --version 2>&1 | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1; }
+  # Resolve tools with the PATH the runners captured at install (.path), not this shell's: with two installs
+  # (say Homebrew's claude and the native one in ~/.local/bin) they can pick different ones.
+  local jobpath=$PATH p; for p in ~/actions-runners/*/.path(N); do jobpath=$(<$p); break; done
+  ver() { local b; b=$(PATH=$jobpath whence -p $1) || { echo missing; return; }; $b --version 2>&1 | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1; }
 
   echo "host=$(scutil --get LocalHostName)"
   echo "macos=$(sw_vers -productVersion) $(uname -m)"
