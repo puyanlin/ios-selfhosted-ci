@@ -14,7 +14,12 @@ need() {  # need <command> <npm package> <login hint>
 
 case "$PROVIDER" in
 claude)
-  CLAUDE=${CLAUDE_PATH:-claude}; command -v "$CLAUDE" >/dev/null || { need claude @anthropic-ai/claude-code "claude setup-token"; CLAUDE=claude; }
+  # claude-path may start with ~/ so one caller file works for every runner Mac, whatever its user name.
+  CLAUDE=${CLAUDE_PATH:-claude}; case $CLAUDE in "~/"*) CLAUDE=$HOME/${CLAUDE#"~/"} ;; esac
+  if ! command -v "$CLAUDE" >/dev/null; then
+    [ -n "${CLAUDE_PATH:-}" ] && echo "::warning::claude-path $CLAUDE_PATH not found on this runner, using claude from PATH"
+    need claude @anthropic-ai/claude-code "claude setup-token"; CLAUDE=claude
+  fi
   [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] || { echo "::error::Claude needs the CLAUDE_CODE_OAUTH_TOKEN secret (claude setup-token)"; exit 1; }
   # Fresh config dir: never load the runner user's ~/.claude (hooks, plugins, MCP servers) in a headless job.
   export CLAUDE_CONFIG_DIR=$WORK/claude-config

@@ -150,6 +150,38 @@ Personal GitHub accounts have no account-wide Actions secrets, so each repo need
   gh workflow run testflight.yml -R you/MyApp -f branch=main -f upload=false  # dry run
   ```
 - **Change the pipeline** → edit `.github/workflows/*` here, then `git tag -f v1 && git push -f origin v1`. Every app picks it up on its next run. (Pin callers to a commit SHA instead of `v1` if you prefer immutable versions.)
+- **Check a runner Mac** → `scripts/doctor.sh` shows the Xcodes, simulator runtimes, tools, signing and runners the jobs will see, and flags what's broken (a config path that no longer exists, a clone behind `v1`, low disk).
+
+## More than one Mac
+
+A second Mac (a laptop, say) can take jobs too. Set it up the same way — clone this repo, copy
+`~/.config/ios-selfhosted-ci/config`, step 2 (signing), then `scripts/runner-add.sh` with the same repos.
+Runner names start with the Mac's LocalHostName, so they don't clash; the labels are the same.
+
+How GitHub splits the work:
+
+- A job goes to **any idle, online runner** of that repo with matching labels. There's no preference and no
+  load balancing — with both idle, either Mac may get it. Both busy: the job waits for whichever frees up first.
+- A Mac that sleeps or is shut down shows as **offline** and is skipped.
+- A Mac that goes away **mid-job** (lid closed) fails that job; GitHub doesn't move it. Re-run it.
+
+Keep the Macs identical, or the same PR passes on one and fails on the other:
+
+```bash
+scripts/doctor.sh --compare other-mac      # an ssh host (key auth); differences are marked ≠
+```
+
+| Must match | Notes |
+|---|---|
+| Xcode builds — **every** installed one | `xcode: 27.1` and `.xcode-version` pick the newest match Spotlight finds, so an Xcode sitting in `~/Downloads` counts. Install them the same way on both, e.g. with [xcodes](https://github.com/XcodesOrg/xcodes), at the same paths. |
+| Simulator runtimes | The PR check matches the runtime to the Xcode SDK |
+| The config | Same values, incl. the `XCODE_APP` / `XCODE_BETA_APP` paths |
+| This repo's clone | At `v1` on both (`git pull --ff-only`) |
+| Distribution identities, API key | Development identities differ per Mac, which is fine |
+
+Upgrade Xcode on one Mac → upgrade the other before the next PR, or pin the older version with `.xcode-version`
+meanwhile. A laptop also competes with your own work for CPU; to keep it out of TestFlight runs, add an extra
+label to the always-on Mac's runners (*repo › Settings › Actions › Runners*) and pass it as `runner-label`.
 
 ## Releasing to the App Store (with asc)
 
@@ -229,7 +261,7 @@ Install several Xcodes side by side (e.g. with [xcodes](https://github.com/Xcode
 | ai-review | `provider` | `claude` | `claude`, `codex` or `gemini` |
 | | `model` | provider default | e.g. `claude-opus-5-5` |
 | | `runner` | `auto` | `auto` = your Mac's `claude-review` runner |
-| | `claude-path`, `bun-path` | download each run | Point at local installs |
+| | `claude-path`, `bun-path` | download each run | Point at local installs; `~/` works, so several runner Macs can share one caller file |
 | | `language` | `English` | Language of the review comments |
 | all | `runner-label` | `macos-xcode` / `claude-review` | |
 

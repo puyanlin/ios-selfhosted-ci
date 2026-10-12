@@ -151,6 +151,36 @@ GitHub 個人帳號沒有「全帳號共用」的 Actions secret，所以每個 
   - PR check 加 `mac-catalyst: true`：iOS 編譯／測試完再編一次 Mac 版（不簽章、不跑測試）。沒有 Mac 版的套件（例如 AdMob）要在 target 裡設成只連結 iOS。
   - TestFlight 加 `platform: macCatalyst`：打包 Mac 版、雲端簽章、上傳到 App Store Connect 的 macOS 平台（匯出 `.pkg`；需先在 App Store Connect 替 App 加上 macOS 平台）。目前只支援雲端簽章。
 - **修改流程**：改這裡的 `.github/workflows/*`，再 `git tag -f v1 && git push -f origin v1`，所有 app 下次執行就會用新版。（想要不可變的版本，可以改成釘在 commit SHA。）
+- **檢查 runner 的 Mac**：`scripts/doctor.sh` 會列出 job 實際會用到的 Xcode、模擬器 runtime、工具、簽章與 runner，並標出有問題的地方（設定檔裡的路徑已經不存在、clone 落後 `v1`、硬碟快滿）。
+
+## 多台 Mac
+
+第二台 Mac（例如筆電）也可以一起接 job。照同樣的方式設定：clone 這個 repo、複製
+`~/.config/ios-selfhosted-ci/config`、做第 2 步（簽章），再對同樣的 repo 跑 `scripts/runner-add.sh`。
+runner 名稱以該台的 LocalHostName 開頭，不會撞名；標籤則相同。
+
+GitHub 怎麼分派：
+
+- job 會交給該 repo **任何一個閒著、在線上**、標籤相符的 runner。沒有優先順序，也不看效能——兩台都閒著時哪台都有可能；兩台都在忙，就等先空出來的那台。
+- 睡眠或關機的 Mac 會顯示**離線**，直接略過。
+- **跑到一半**離線（例如闔上筆電），那個 job 會失敗，GitHub 不會改派到另一台，要手動 Re-run。
+
+兩台環境要一致，不然同一個 PR 會在這台過、那台不過：
+
+```bash
+scripts/doctor.sh --compare other-mac      # ssh 的 host（用金鑰登入），不一致的項目標 ≠
+```
+
+| 必須一致 | 說明 |
+|---|---|
+| Xcode build 號——**每一個**有裝的 | `xcode: 27.1` 和 `.xcode-version` 會從 Spotlight 找得到的 Xcode 挑最新的，所以丟在 `~/Downloads` 的也算。兩台用同一種方式安裝（例如 [xcodes](https://github.com/XcodesOrg/xcodes)），放在相同路徑。 |
+| 模擬器 runtime | PR check 會挑跟 Xcode SDK 對應的 runtime |
+| 設定檔 | 數值相同，包括 `XCODE_APP`／`XCODE_BETA_APP` 路徑 |
+| 這個 repo 的 clone | 兩台都在 `v1`（`git pull --ff-only`） |
+| Distribution 憑證、API 金鑰 | Development 憑證本來就每台不同，沒關係 |
+
+一台升級 Xcode → 下一個 PR 之前另一台也要升，或先用 `.xcode-version` 釘在舊版。筆電也會跟你自己的工作搶 CPU；
+不想讓它跑 TestFlight，可以給常駐那台的 runner 多加一個標籤（*repo › Settings › Actions › Runners*），再用 `runner-label` 指定。
 
 ## 上架 App Store（用 asc）
 
