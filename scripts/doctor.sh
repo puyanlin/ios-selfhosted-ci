@@ -1,7 +1,8 @@
 #!/bin/zsh
 # Check this Mac's runner environment, or compare it with another runner Mac.
 # Usage: doctor.sh                     this Mac: what the jobs will see, and what's broken
-#        doctor.sh --compare <host>    side by side with <host> (ssh with key auth), differences marked
+#        doctor.sh --compare <host> [<clone dir on host>]
+#                                      side by side with <host> (ssh with key auth), differences marked ≠
 # Read-only. Prints no secrets (key IDs and certificate names only).
 # Several Macs share the same runner labels and GitHub hands each job to whichever is idle, so a difference
 # here (another Xcode build, a missing simulator runtime) shows up as a PR that passes on one Mac and fails
@@ -12,10 +13,12 @@ probe() {
   local cfg=${IOS_SELFHOSTED_CI_CONFIG:-$HOME/.config/ios-selfhosted-ci/config} ci=${DOCTOR_CI_DIR:-}
   # Piped over ssh there is no script path to start from, so look in the usual places.
   if [[ -z $ci ]]; then
-    for d in ~/ios-selfhosted-ci ~/*/ios-selfhosted-ci(N/) ~/*/*/ios-selfhosted-ci(N/); do
+    for d in ~/ios-selfhosted-ci ~/*/ios-selfhosted-ci(N/) ~/*/*/ios-selfhosted-ci(N/) ~/*/*/*/ios-selfhosted-ci(N/); do
       [[ -d $d/.git ]] && { ci=$d; break; }
     done
   fi
+  [[ $ci == '~/'* ]] && ci=$HOME/${ci#'~/'}   # a path given for the other Mac, expanded there
+  [[ -n $ci && ! -d $ci/.git ]] && ci=""
   local XCODE_APP=/Applications/Xcode.app XCODE_BETA_APP=
   [[ -f $cfg ]] && eval "$(grep -E '^XCODE_(BETA_)?APP=' $cfg)"
   xbuild() { /usr/libexec/PlistBuddy -c 'Print :ProductBuildVersion' $1/Contents/version.plist 2>/dev/null; }
@@ -40,14 +43,19 @@ probe() {
     | sed -nE 's/^iOS ([0-9.]+) \([0-9.]+ - ([A-Za-z0-9]+)\).*/\1 (\2)/p' | sort | paste -sd, -)"
   for t in gh claude bun asc python3 git; do echo "$t=$(ver $t)"; done
   if [[ -n $ci ]]; then
-    # Fixed length: compared with the 7-character remote hash below.
-    echo "ci_repo=$(git -C $ci rev-parse --short=7 HEAD)$([[ -n $(git -C $ci status --porcelain) ]] && echo ' +local changes')"
     local ref=${CI_REF:-v1} r=   # like _config.sh: the config wins, else the environment, else v1
     [[ -f $cfg ]] && r=$(sed -nE 's/^CI_REF=([^[:space:]#]+).*/\1/p' $cfg | tr -d '"' | tail -1)
     [[ -n $r ]] && ref=$r
-    echo "ci_ref=$ref $(git -C $ci ls-remote origin "refs/tags/$ref" "refs/tags/$ref^{}" "refs/heads/$ref" 2>/dev/null | tail -1 | cut -c1-7)"
+    # Full hashes; a clone ahead of the ref (main with commits not tagged yet) is fine, only behind is stale.
+    local refsha=$(git -C $ci ls-remote origin "refs/tags/$ref" "refs/tags/$ref^{}" "refs/heads/$ref" 2>/dev/null | tail -1 | cut -f1)
+    local head=$(git -C $ci rev-parse HEAD) state
+    if [[ -z $refsha ]]; then state="unknown (can't reach origin)"
+    elif [[ $head == $refsha ]]; then state="at $ref"
+    elif git -C $ci merge-base --is-ancestor $refsha HEAD 2>/dev/null; then state="ahead of $ref"
+    else state="behind $ref"; fi
+    echo "ci_repo=$state, ${head:0:7}$([[ -n $(git -C $ci status --porcelain) ]] && echo ' +local changes')"
   else
-    echo "ci_repo=MISSING"; echo "ci_ref=?"
+    echo "ci_repo=MISSING"
   fi
   # Values only, comments stripped; machine-specific paths will show up as a difference, which is the point.
   [[ -f $cfg ]] && echo "config=$(grep -E '^[A-Z_]+=' $cfg | sed -E 's/[[:space:]]+#.*$//' | sort | md5 | cut -c1-8)" \
@@ -72,11 +80,15 @@ probe() {
 
 # Per-machine by nature: never a mismatch.
 INFO=(host disk_free_gb jobs_running signing_development)
+# Worth saying, but not a problem with the Mac: doesn't count towards the exit status.
+NOTES=(jobs_running)
 
 problems() {  # problems <key> <value>: what's wrong with one value on its own
   case $1 in
     xcode|xcode_beta) [[ $2 == MISSING* ]] && echo "path in the config doesn't exist" ;;
-    ci_repo) [[ $2 == MISSING ]] && echo "clone not found (set DOCTOR_CI_DIR)"; [[ $2 == *local* ]] && echo "uncommitted changes" ;;
+    ci_repo) [[ $2 == MISSING ]] && echo "clone not found: DOCTOR_CI_DIR=<dir> here, or --compare <host> <dir> for the other Mac"
+             [[ $2 == behind* ]] && echo "doesn't contain ${${2#behind }%%,*}: git pull --ff-only on main"
+             [[ $2 == *local* ]] && echo "uncommitted changes" ;;
     config) [[ $2 == MISSING ]] && echo "no ~/.config/ios-selfhosted-ci/config" ;;
     signing_distribution) [[ $2 == NO* ]] && echo "run scripts/ci-signing-setup.sh keychain" ;;
     asc_keys) [[ -z $2 ]] && echo "no API key (TestFlight jobs will fail): scripts/ci-signing-setup.sh asc" ;;
@@ -85,11 +97,6 @@ problems() {  # problems <key> <value>: what's wrong with one value on its own
     jobs_running) (( $2 > 0 )) && echo "don't upgrade or clean up on this Mac right now" ;;
     *) [[ $2 == missing ]] && echo "not installed" ;;
   esac
-}
-
-ci_matches_ref() {  # ci_repo vs ci_ref commit
-  local head=${${1%% *}}; local ref=${2##* }
-  [[ -n $ref && $ref != '?' && $head != MISSING && $head != $ref ]] && echo "clone is at $head, $3 is at $ref: git pull --ff-only"
 }
 
 # Over ssh the login shell may print its own lines first; the marker keeps them out of the results.
@@ -102,16 +109,16 @@ issues=0
 if [[ ${1:-} != --compare ]]; then
   for k in $KEYS; do
     printf '%-22s %s\n' $k "${A[$k]}"
-    for p in "${(@f)$(problems $k "${A[$k]}")}" "$( [[ $k == ci_ref ]] && ci_matches_ref "${A[ci_repo]}" "${A[$k]}" "${A[$k]%% *}")"; do
-      [[ -n $p ]] && { printf '%-22s ⚠️  %s\n' '' "$p"; (( issues++ )); }
+    for p in "${(@f)$(problems $k "${A[$k]}")}"; do
+      [[ -n $p ]] && { printf '%-22s ⚠️  %s\n' '' "$p"; (( ${NOTES[(Ie)$k]} )) || (( issues++ )); }
     done
   done
   (( issues )) && echo "\n$issues issue(s)." || echo "\nNo issues."
   exit $(( issues > 0 ))
 fi
 
-host=${2:?usage: doctor.sh --compare <ssh-host>}
-remote=$(ssh -o BatchMode=yes -o ConnectTimeout=10 $host 'zsh -l -s -- --probe' < $0) || { echo "Can't reach $host over ssh."; exit 2; }
+host=${2:?usage: doctor.sh --compare <ssh-host> [<clone dir on host>]}
+remote=$(ssh -o BatchMode=yes -o ConnectTimeout=10 $host "${3:+DOCTOR_CI_DIR=${(q)3} }zsh -l -s -- --probe" < $0) || { echo "Can't reach $host over ssh."; exit 2; }
 while IFS='=' read -r k v; do B[${k#doctor:}]=$v; done < <(grep '^doctor:' <<< $remote)
 [[ -n ${B[host]:-} ]] || { echo "No probe output from $host."; exit 2; }
 w=$(( COLUMNS > 100 ? (COLUMNS - 28) / 2 : 36 ))
@@ -120,15 +127,15 @@ for k in $KEYS; do
   [[ $k == host ]] && continue
   mark=' '
   a=${A[$k]} b=${B[$k]}
-  [[ $k == ci_repo ]] && { a=${a%% *}; b=${b%% *}; }   # local changes are reported below
+  [[ $k == ci_repo ]] && { a=${a%%,*}; b=${b%%,*}; }   # where it stands vs the ref, not the exact commit
   if (( ! ${INFO[(Ie)$k]} )) && [[ $a != $b ]]; then
     mark='≠'; (( issues++ ))
   fi
   printf "%s %-20s %-${w}.${w}s   %s\n" $mark $k "${A[$k]}" "${B[$k]}"
   for side in A B; do
     name=${${(P)side}[host]}; val=${${(P)side}[$k]}
-    for p in "${(@f)$(problems $k "$val")}" "$( [[ $k == ci_ref ]] && ci_matches_ref "${${(P)side}[ci_repo]}" "$val" "${val%% *}")"; do
-      [[ -n $p ]] && { printf '  %-20s ⚠️  %s: %s\n' '' $name "$p"; (( issues++ )); }
+    for p in "${(@f)$(problems $k "$val")}"; do
+      [[ -n $p ]] && { printf '  %-20s ⚠️  %s: %s\n' '' $name "$p"; (( ${NOTES[(Ie)$k]} )) || (( issues++ )); }
     done
   done
 done
