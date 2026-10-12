@@ -37,9 +37,11 @@ probe() {
     | sed -nE 's/^iOS ([0-9.]+) \([0-9.]+ - ([A-Za-z0-9]+)\).*/\1 (\2)/p' | sort | paste -sd, -)"
   for t in gh claude bun asc python3 git; do echo "$t=$(ver $t)"; done
   if [[ -n $ci ]]; then
-    echo "ci_repo=$(git -C $ci rev-parse --short HEAD)$([[ -n $(git -C $ci status --porcelain) ]] && echo ' +local changes')"
-    local ref=${CI_REF:-v1}
-    [[ -f $cfg ]] && ref=$(sed -nE 's/^CI_REF=([^[:space:]#]+).*/\1/p' $cfg | tr -d '"' | tail -1); ref=${ref:-v1}
+    # Fixed length: compared with the 7-character remote hash below.
+    echo "ci_repo=$(git -C $ci rev-parse --short=7 HEAD)$([[ -n $(git -C $ci status --porcelain) ]] && echo ' +local changes')"
+    local ref=${CI_REF:-v1} r=   # like _config.sh: the config wins, else the environment, else v1
+    [[ -f $cfg ]] && r=$(sed -nE 's/^CI_REF=([^[:space:]#]+).*/\1/p' $cfg | tr -d '"' | tail -1)
+    [[ -n $r ]] && ref=$r
     echo "ci_ref=$ref $(git -C $ci ls-remote origin "refs/tags/$ref" "refs/tags/$ref^{}" "refs/heads/$ref" 2>/dev/null | tail -1 | cut -c1-7)"
   else
     echo "ci_repo=MISSING"; echo "ci_ref=?"
@@ -57,7 +59,9 @@ probe() {
   fi
   echo "asc_keys=$(grep -hs '^ASC_KEY_ID=' ~/.appstoreconnect/ci*.env | cut -d= -f2 | sort -u | paste -sd, -)"
   local runners=(~/actions-runners/*/.runner(N)) listeners=(~/actions-runners/*/bin/Runner.Listener(N))
-  echo "runners=${#runners} registered, $(launchctl list 2>/dev/null | grep -c 'actions.runner') services loaded"
+  # Count live listener processes rather than launchd jobs: that's what actually takes jobs, and it reads the
+  # same over ssh as in a GUI session.
+  echo "runners=${#runners} registered, $(pgrep -f 'actions-runners/.*/bin/Runner.Listener' | wc -l | tr -d ' ') running"
   echo "runner_version=$( (( ${#listeners} )) && ${listeners[1]} --version 2>/dev/null || echo none)"
   echo "disk_free_gb=$(( $(df -k ~ | awk 'NR==2{print $4}') / 1024 / 1024 ))"
   echo "jobs_running=$(pgrep -f Runner.Worker | wc -l | tr -d ' ')"
@@ -73,7 +77,7 @@ problems() {  # problems <key> <value>: what's wrong with one value on its own
     config) [[ $2 == MISSING ]] && echo "no ~/.config/ios-selfhosted-ci/config" ;;
     signing_distribution) [[ $2 == NO* ]] && echo "run scripts/ci-signing-setup.sh keychain" ;;
     asc_keys) [[ -z $2 ]] && echo "no API key (TestFlight jobs will fail): scripts/ci-signing-setup.sh asc" ;;
-    runners) local r=${2%% *} s=${${2#*, }%% *}; (( r != s )) && echo "$((r - s)) runner(s) not loaded" ;;
+    runners) local r=${2%% *} s=${${2#*, }%% *}; (( r > s )) && echo "$((r - s)) runner(s) not running (./svc.sh start in its folder)" ;;
     disk_free_gb) (( $2 < 20 )) && echo "low; jobs refuse to start under ${MIN_FREE_GB:-8} GB" ;;
     jobs_running) (( $2 > 0 )) && echo "don't upgrade or clean up on this Mac right now" ;;
     *) [[ $2 == missing ]] && echo "not installed" ;;
@@ -85,7 +89,8 @@ ci_matches_ref() {  # ci_repo vs ci_ref commit
   [[ -n $ref && $ref != '?' && $head != MISSING && $head != $ref ]] && echo "clone is at $head, $3 is at $ref: git pull --ff-only"
 }
 
-[[ ${1:-} == --probe ]] && { probe; exit; }
+# Over ssh the login shell may print its own lines first; the marker keeps them out of the results.
+[[ ${1:-} == --probe ]] && { probe | sed 's/^/doctor:/'; exit; }
 DOCTOR_CI_DIR=${DOCTOR_CI_DIR:-${0:A:h:h}}
 typeset -A A B; typeset -a KEYS
 while IFS='=' read -r k v; do KEYS+=$k; A[$k]=$v; done < <(DOCTOR_CI_DIR=$DOCTOR_CI_DIR probe)
@@ -104,7 +109,8 @@ fi
 
 host=${2:?usage: doctor.sh --compare <ssh-host>}
 remote=$(ssh -o BatchMode=yes -o ConnectTimeout=10 $host 'zsh -l -s -- --probe' < $0) || { echo "Can't reach $host over ssh."; exit 2; }
-while IFS='=' read -r k v; do B[$k]=$v; done <<< $remote
+while IFS='=' read -r k v; do B[${k#doctor:}]=$v; done < <(grep '^doctor:' <<< $remote)
+[[ -n ${B[host]:-} ]] || { echo "No probe output from $host."; exit 2; }
 w=$(( COLUMNS > 100 ? (COLUMNS - 28) / 2 : 36 ))
 printf "%-22s %-${w}.${w}s   %s\n" '' "${A[host]}" "${B[host]}"
 for k in $KEYS; do
