@@ -28,14 +28,18 @@ if git rev-parse -q --verify refs/tags/$tag >/dev/null; then
   [[ $(git rev-parse $tag^{commit}) == $(git rev-parse HEAD) ]] || { echo "$tag already exists on another commit"; exit 1; }
   echo "$tag already on HEAD, continuing"
 fi
-[[ -n $prev ]] && [[ $(printf '%s\n%s\n' ${prev#v} $ver | sort -V | tail -1) != $ver ]] && { echo "$ver isn't newer than $prev"; exit 1; }
+# Newer than every release of this major line, wherever it was tagged; Latest only if newer than all lines.
+highest() { git tag -l "$1" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -vx $tag | sort -V | tail -1; }
+top_major=$(highest "$major.*") top_all=$(highest 'v*')
+[[ -n $top_major ]] && [[ $(printf '%s\n%s\n' ${top_major#v} $ver | sort -V | tail -1) != $ver ]] && { echo "$ver isn't newer than $top_major"; exit 1; }
+latest=true; [[ -n $top_all ]] && [[ $(printf '%s\n%s\n' ${top_all#v} $ver | sort -V | tail -1) != $ver ]] && latest=false
 
 body=$(<$notes)
 [[ -n $prev && $body != *"/compare/"* ]] && body+=$'\n\n'"**Full changes:** https://github.com/$repo/compare/$prev...$tag"
 git rev-parse -q --verify refs/tags/$tag >/dev/null || git tag -a $tag -m "$tag: $title"
 git push -q origin $tag
 gh release view $tag >/dev/null 2>&1 && echo "Release $tag already published, keeping it" \
-  || gh release create $tag --verify-tag --latest --title "$tag — $title" --notes "$body"
+  || gh release create $tag --verify-tag --latest=$latest --title "$tag — $title" --notes "$body"
 git tag -f $major $tag >/dev/null
 git push -q -f origin $major
 echo "$major → $tag. Every app repo picks it up on its next run."
