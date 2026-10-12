@@ -133,7 +133,7 @@ for k in $KEYS; do
   fi
   printf "%s %-20s %-${w}.${w}s   %s\n" $mark $k "${A[$k]}" "${B[$k]}"
   for side in A B; do
-    name=${${(P)side}[host]}; val=${${(P)side}[$k]}
+    if [[ $side == A ]]; then name=${A[host]} val=${A[$k]}; else name=${B[host]} val=${B[$k]}; fi
     for p in "${(@f)$(problems $k "$val")}"; do
       [[ -n $p ]] && { printf '  %-20s ⚠️  %s: %s\n' '' $name "$p"; (( ${NOTES[(Ie)$k]} )) || (( issues++ )); }
     done
