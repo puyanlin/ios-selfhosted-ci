@@ -14,7 +14,7 @@ ver=${1:?usage: release.sh <x.y.z> --draft | <x.y.z> <notes.md> <title>}
 tag=v$ver major=v${ver%%.*}
 git fetch -q --tags --force origin
 prev=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' --exclude $tag origin/main 2>/dev/null || true)
-repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+repo=$(gh repo view "$(git remote get-url origin)" --json nameWithOwner -q .nameWithOwner)   # the repo origin is, not gh's guess
 
 if [[ ${2:-} == --draft ]]; then
   echo "Since ${prev:-the first commit}:"; git log --format='- %h %s' ${prev:+$prev..}origin/main; exit
@@ -38,8 +38,8 @@ body=$(<$notes)
 [[ -n $prev && $body != *"/compare/"* ]] && body+=$'\n\n'"**Full changes:** https://github.com/$repo/compare/$prev...$tag"
 git rev-parse -q --verify refs/tags/$tag >/dev/null || git tag -a $tag -m "$tag: $title"
 git push -q origin $tag
-gh release view $tag >/dev/null 2>&1 && echo "Release $tag already published, keeping it" \
-  || gh release create $tag --verify-tag --latest=$latest --title "$tag — $title" --notes "$body"
-git tag -f $major $tag >/dev/null
+gh release view $tag -R $repo >/dev/null 2>&1 && echo "Release $tag already published, keeping it" \
+  || gh release create $tag -R $repo --verify-tag --latest=$latest --title "$tag — $title" --notes "$body"
+git tag -f $major $tag^{commit} >/dev/null   # the commit, like v1 has always been
 git push -q -f origin $major
 echo "$major → $tag. Every app repo picks it up on its next run."
