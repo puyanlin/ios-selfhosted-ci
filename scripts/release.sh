@@ -29,7 +29,7 @@ if git rev-parse -q --verify refs/tags/$tag >/dev/null; then
   echo "$tag already on HEAD, continuing"
 fi
 # Newer than every release of this major line, wherever it was tagged; Latest only if newer than all lines.
-highest() { git tag -l "$1" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -vx $tag | sort -V | tail -1; }
+highest() { { git tag -l "$1" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -vx $tag || true; } | sort -V | tail -1; }   # empty in a fresh fork
 top_major=$(highest "$major.*") top_all=$(highest 'v*')
 [[ -n $top_major ]] && [[ $(printf '%s\n%s\n' ${top_major#v} $ver | sort -V | tail -1) != $ver ]] && { echo "$ver isn't newer than $top_major"; exit 1; }
 latest=true; [[ -n $top_all ]] && [[ $(printf '%s\n%s\n' ${top_all#v} $ver | sort -V | tail -1) != $ver ]] && latest=false
