@@ -101,6 +101,7 @@ render() {  # render <template>
   if [[ $1 == ai-review ]]; then
     if [[ $provider == claude ]]; then   # local installs only matter on the self-hosted claude-review runner
       local c=$(command -v claude || true) b=$(command -v bun || true)
+      [[ $c == $HOME/* ]] && c="~/${c#$HOME/}"   # same file for every runner Mac, whatever its user name
       [[ -n $c ]] && review_with+="      claude-path: $c"$'\n'
       [[ -n $b ]] && review_with+="      bun-path: $b"$'\n'
     fi

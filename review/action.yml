@@ -10,7 +10,7 @@ inputs:
   language:
     default: English
   claude-path:
-    description: "Claude Code binary on the runner (default: claude on PATH)"
+    description: "Claude Code binary on the runner, ~/ allowed (default: claude on PATH)"
     default: ''
   claude-token:
     default: ''

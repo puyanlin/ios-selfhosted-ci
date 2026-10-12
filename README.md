@@ -261,7 +261,7 @@ Install several Xcodes side by side (e.g. with [xcodes](https://github.com/Xcode
 | ai-review | `provider` | `claude` | `claude`, `codex` or `gemini` |
 | | `model` | provider default | e.g. `claude-opus-5-5` |
 | | `runner` | `auto` | `auto` = your Mac's `claude-review` runner |
-| | `claude-path`, `bun-path` | download each run | Point at local installs |
+| | `claude-path`, `bun-path` | download each run | Point at local installs; `~/` works, so several runner Macs can share one caller file |
 | | `language` | `English` | Language of the review comments |
 | all | `runner-label` | `macos-xcode` / `claude-review` | |
 

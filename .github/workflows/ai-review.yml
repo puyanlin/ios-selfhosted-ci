@@ -14,7 +14,7 @@ on:
       provider: { type: string, default: claude }
       model: { type: string, default: '', description: 'Empty = provider default (claude-opus-5-5 for Claude)' }
       language: { type: string, default: English }
-      claude-path: { type: string, default: '', description: 'Claude Code binary on the runner' }
+      claude-path: { type: string, default: '', description: 'Claude Code binary on the runner (~/ allowed)' }
       bun-path: { type: string, default: '', description: 'Unused (kept for older callers)' }
       runner: { type: string, default: auto, description: 'auto, or a runs-on value as JSON, e.g. "ubuntu-latest"' }
       show-full-output: { type: boolean, default: false, description: 'Unused (kept for older callers)' }
